@@ -39,6 +39,8 @@ export async function createKnowledge(user_profile, name, kb_id = '') {
         }
 
         const data = await response.json();
+        console.info('created knowledge', { name, kb_id });
+
         return data.data;
     } catch (error) {
         console.error('Error creating knowledge base:', error);

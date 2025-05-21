@@ -368,7 +368,6 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
         if (kbId) {
             if (shouldCreateKB) {
                 await createKnowledge(request.user.profile, fileName, kbId);
-                console.info('created knowledge', { fileName, kbId });
             }
         }
 
