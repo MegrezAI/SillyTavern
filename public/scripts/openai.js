@@ -1946,7 +1946,7 @@ async function sendAltScaleRequest(messages, logit_bias, signal, type) {
  * @throws {Error}
  */
 
-async function sendOpenAIRequest(type, messages, signal) {
+async function sendOpenAIRequest(type, messages, signal, leaprag_kb_id = '') {
     // Provide default abort signal
     if (!signal) {
         signal = new AbortController().signal;
@@ -2027,6 +2027,7 @@ async function sendOpenAIRequest(type, messages, signal) {
         'enable_web_search': Boolean(oai_settings.enable_web_search),
         'request_images': Boolean(oai_settings.request_images),
         'custom_prompt_post_processing': oai_settings.custom_prompt_post_processing,
+        'leaprag_kb_id': leaprag_kb_id,
     };
 
     if (!canMultiSwipe && ToolManager.canPerformToolCalls(type)) {

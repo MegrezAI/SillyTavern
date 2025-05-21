@@ -51,6 +51,7 @@ const STORAGE_KEYS = {
  * @property {string} salt - Salt used for hashing the password
  * @property {boolean} enabled - Whether the user is enabled
  * @property {boolean} admin - Whether the user is an admin (can manage other users)
+ * @property {string} [leaprag_apikey] - The LeapRAG API key for the user
  */
 
 /**
@@ -822,8 +823,25 @@ export async function setUserDataMiddleware(request, response, next) {
     if (!ENABLE_ACCOUNTS) {
         const handle = DEFAULT_USER.handle;
         const directories = getUserDirectories(handle);
+        const pathToSettings = path.join(directories.root, SETTINGS_FILE);
+        let leaprag_apikey = '';
+        let leaprag_api_url = '';
+        try {
+            if (fs.existsSync(pathToSettings)) {
+                const settings = JSON.parse(fs.readFileSync(pathToSettings, 'utf8'));
+                leaprag_apikey = settings.power_user?.leaprag_apikey || '';
+                leaprag_api_url = settings.power_user?.leaprag_api_url || '';
+            }
+        } catch (error) {
+            console.error('Error reading LeapRAG API key:', error);
+        }
+
         request.user = {
-            profile: DEFAULT_USER,
+            profile: {
+                ...DEFAULT_USER,
+                leaprag_apikey,
+                leaprag_api_url,
+            },
             directories: directories,
         };
         return next();
@@ -856,8 +874,23 @@ export async function setUserDataMiddleware(request, response, next) {
     }
 
     const directories = getUserDirectories(handle);
+    let leaprag_apikey = '';
+
+    try {
+        const pathToSettings = path.join(directories.root, SETTINGS_FILE);
+        if (fs.existsSync(pathToSettings)) {
+            const settings = JSON.parse(fs.readFileSync(pathToSettings, 'utf8'));
+            leaprag_apikey = settings.power_user?.leaprag_apikey || '';
+        }
+    } catch (error) {
+        console.error('Error reading LeapRAG API key:', error);
+    }
+
     request.user = {
-        profile: user,
+        profile: {
+            ...user,
+            leaprag_apikey: leaprag_apikey,
+        },
         directories: directories,
     };
 

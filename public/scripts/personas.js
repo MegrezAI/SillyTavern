@@ -448,6 +448,8 @@ export function initPersona(avatarId, personaName, personaDescription) {
         depth: DEFAULT_DEPTH,
         role: DEFAULT_ROLE,
         lorebook: '',
+        leaprag_apikey: '',
+        leaprag_api_url: '',
     };
 
     saveSettingsDebounced();
@@ -504,6 +506,8 @@ export async function convertCharacterToPersona(characterId = null) {
         depth: DEFAULT_DEPTH,
         role: DEFAULT_ROLE,
         lorebook: '',
+        leaprag_apikey: '',
+        leaprag_api_url: '',
     };
 
     // If the user is currently using this persona, update the description
@@ -536,6 +540,43 @@ const countPersonaDescriptionTokens = debounce(async () => {
  * Updates the UI for the Persona Management page with the current persona values
  */
 export function setPersonaDescription() {
+    let $apikeyInput = $('#persona_leaprag_apikey');
+    let $apiUrlInput = $('#persona_leaprag_api_url');
+
+    if ($apikeyInput.length === 0) {
+        const $container = $('<div class="range-block">')
+            .append($('<label for="persona_leaprag_apikey" class="checkbox_label">')
+                .append($('<span data-i18n="LeapRAG API Key">LeapRAG API Key</span>')),
+            )
+            .append($('<input type="text" id="persona_leaprag_apikey" class="text_pole" placeholder="Enter your LeapRAG API Key">'));
+
+        $('.persona_management_global_settings').prepend($container);
+        $apikeyInput = $('#persona_leaprag_apikey');
+    }
+
+    if ($apiUrlInput.length === 0) {
+        const $container = $('<div class="range-block">')
+            .append($('<label for="persona_leaprag_api_url" class="checkbox_label">')
+                .append($('<span data-i18n="LeapRAG API URL">LeapRAG API URL</span>')),
+            )
+            .append($('<input type="text" id="persona_leaprag_api_url" class="text_pole" placeholder="Enter your LeapRAG API URL">'));
+
+        $('.persona_management_global_settings').prepend($container);
+        $apiUrlInput = $('#persona_leaprag_api_url');
+    }
+
+    $apikeyInput.val(power_user.leaprag_apikey || '');
+    $apikeyInput.off('input').on('input', function () {
+        power_user.leaprag_apikey = $(this).val();
+        saveSettingsDebounced();
+    });
+
+    $apiUrlInput.val(power_user.leaprag_api_url || '');
+    $apiUrlInput.off('input').on('input', function () {
+        power_user.leaprag_api_url = $(this).val();
+        saveSettingsDebounced();
+    });
+
     $('#your_name').text(name1);
 
     if (power_user.persona_description_position === persona_description_positions.AFTER_CHAR) {

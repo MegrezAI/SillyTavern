@@ -13,7 +13,6 @@ import {
     slideToggle,
     default as libs,
 } from './lib.js';
-
 import { humanizedDateTime, favsToHotswap, getMessageTimeStamp, dragElement, isMobile, initRossMods } from './scripts/RossAscends-mods.js';
 import { userStatsHandler, statMesProcess, initStats } from './scripts/stats.js';
 import {
@@ -4801,6 +4800,11 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         }
     }
 
+    const kbId = chat_metadata?.leaprag_kb_id;
+    if (kbId) {
+        generate_data.leaprag_kb_id = kbId;
+    }
+
     await eventSource.emit(event_types.GENERATE_AFTER_DATA, generate_data);
 
     if (dryRun) {
@@ -4942,7 +4946,6 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
      */
     async function onSuccess(data) {
         if (!data) return;
-
         if (data?.fromStream) {
             return data;
         }
@@ -5767,13 +5770,12 @@ function setInContextMessages(msgInContextCount, type) {
  */
 export async function sendGenerationRequest(type, data) {
     if (main_api === 'openai') {
-        return await sendOpenAIRequest(type, data.prompt, abortController.signal);
+        return await sendOpenAIRequest(type, data.prompt, abortController.signal, data.leaprag_kb_id);
     }
 
     if (main_api === 'koboldhorde') {
         return await generateHorde(data.prompt, data, abortController.signal, true);
     }
-
     const response = await fetch(getGenerateUrl(main_api), {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -5802,7 +5804,7 @@ export async function sendStreamingRequest(type, data) {
 
     switch (main_api) {
         case 'openai':
-            return await sendOpenAIRequest(type, data.prompt, streamingProcessor.abortController.signal);
+            return await sendOpenAIRequest(type, data.prompt, streamingProcessor.abortController.signal, data.leaprag_kb_id);
         case 'textgenerationwebui':
             return await generateTextGenWithStreaming(data, streamingProcessor.abortController.signal);
         case 'novel':
@@ -6942,6 +6944,7 @@ export async function saveChat({ chatName, withMetadata, mesId, force = false } 
                 chat: chatToSave,
                 avatar_url: characters[this_chid].avatar,
                 force: force,
+                create_kb: characters[this_chid].create_kb,
             }),
         });
 
@@ -9845,7 +9848,13 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
     else {
         //RossAscends: added character name to new chat filenames and replaced Date.now() with humanizedDateTime;
         chat_metadata = {};
+
         characters[this_chid].chat = `${name2} - ${humanizedDateTime()}`;
+
+        const kbId = uuidv4();
+        chat_metadata.leaprag_kb_id = kbId;
+        characters[this_chid].create_kb = true;
+
         $('#selected_chat_pole').val(characters[this_chid].chat);
         await getChat();
         await createOrEditCharacter(new CustomEvent('newChat'));

@@ -41,6 +41,7 @@ import {
     webTokenizers,
     getWebTokenizer,
 } from '../tokenizers.js';
+import { retrievalMemories } from '../leaprag.js';
 
 const API_OPENAI = 'https://api.openai.com/v1';
 const API_CLAUDE = 'https://api.anthropic.com/v1';
@@ -794,6 +795,19 @@ async function sendDeepSeekRequest(request, response) {
             ...bodyParams,
         };
 
+        if (Array.isArray(requestBody.messages) && requestBody.messages.length > 0) {
+            const lastMessage = requestBody.messages[requestBody.messages.length - 1];
+            if (lastMessage.role === 'user') {
+                const memoryContent = await retrievalMemories(request.user.profile, {
+                    question: lastMessage.content,
+                    kb_ids: [request.body.leaprag_kb_id],
+                });
+                console.info('Retrieved memory content:', { memoryContent });
+                if (memoryContent) {
+                    lastMessage.content = `<memory>\n${memoryContent}\n</memory>\n\n` + lastMessage.content;
+                }
+            }
+        }
         const config = {
             method: 'POST',
             headers: {

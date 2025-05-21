@@ -48,14 +48,17 @@ declare global {
         }
     }
 
-    namespace Express {
-        export interface Request {
-            user: {
-                profile: User;
-                directories: UserDirectoryList;
-            };
-        }
+  namespace Express {
+    export interface Request {
+      user: {
+        profile: User & {
+          leaprag_apikey: string;
+          leaprag_api_url: string;
+        };
+        directories: UserDirectoryList;
+      };
     }
+  }
 
     /**
      * The root directory for user data.
