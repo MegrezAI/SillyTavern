@@ -805,7 +805,10 @@ async function sendDeepSeekRequest(request, response) {
                 });
                 console.info('Retrieved memory content:', { memoryContent });
                 if (memoryContent) {
-                    lastMessage.content = `<memory>\n${memoryContent}\n</memory>\n\n` + lastMessage.content;
+                    lastMessage.content = `<memory>\n${memoryContent}\n</memory>\n\n` +
+                        `Note: The real-world user is playing the role of "${request.body.user_name}" in this fictional conversation.
+                        All "${request.body.user_name}:" lines in memory are the user's lines.
+                        All "${request.body.char_name}:" lines are the model's response. \n\n` + lastMessage.content;
                 }
             }
         }
