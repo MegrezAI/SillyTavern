@@ -796,8 +796,9 @@ async function sendDeepSeekRequest(request, response) {
         };
 
         if (Array.isArray(requestBody.messages) && requestBody.messages.length > 0) {
+            const rawLastMessages = request.body.messages[request.body.messages.length - 1];
             const lastMessage = requestBody.messages[requestBody.messages.length - 1];
-            if (lastMessage.role === 'user') {
+            if (lastMessage.role === 'user' && rawLastMessages.role !== 'system') {
                 const memoryContent = await retrievalMemories(request.user.profile, {
                     question: lastMessage.content,
                     kb_ids: [request.body.leaprag_kb_id],
