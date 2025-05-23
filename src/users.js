@@ -15,7 +15,7 @@ import _ from 'lodash';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 import { USER_DIRECTORY_TEMPLATE, DEFAULT_USER, PUBLIC_DIRECTORIES, SETTINGS_FILE, UPLOADS_DIRECTORY } from './constants.js';
-import { getConfigValue, color, delay, generateTimestamp } from './util.js';
+import { getConfigValue, color, delay, generateTimestamp, safeReadFileSync } from './util.js';
 import { readSecret, writeSecret } from './endpoints/secrets.js';
 import { getContentOfType } from './endpoints/content-manager.js';
 
@@ -51,7 +51,6 @@ const STORAGE_KEYS = {
  * @property {string} salt - Salt used for hashing the password
  * @property {boolean} enabled - Whether the user is enabled
  * @property {boolean} admin - Whether the user is an admin (can manage other users)
- * @property {string} [leaprag_apikey] - The LeapRAG API key for the user
  */
 
 /**
@@ -96,7 +95,6 @@ const STORAGE_KEYS = {
  * @property {string} vectors - The directory where the vectors are stored
  * @property {string} backups - The directory where the backups are stored
  * @property {string} sysprompt - The directory where the system prompt data is stored
- * @property {string} reasoning - The directory where the reasoning templates are stored
  */
 
 /**
@@ -819,22 +817,19 @@ async function basicUserLogin(request) {
  * @param {import('express').NextFunction} next Next function
  */
 export async function setUserDataMiddleware(request, response, next) {
+    let leaprag_apikey = '';
+    let leaprag_api_url = '';
     // If user accounts are disabled, use the default user
     if (!ENABLE_ACCOUNTS) {
         const handle = DEFAULT_USER.handle;
         const directories = getUserDirectories(handle);
+
         const pathToSettings = path.join(directories.root, SETTINGS_FILE);
-        let leaprag_apikey = '';
-        let leaprag_api_url = '';
-        try {
-            if (fs.existsSync(pathToSettings)) {
-                const settings = JSON.parse(fs.readFileSync(pathToSettings, 'utf8'));
-                leaprag_apikey = settings.power_user?.leaprag_apikey || '';
-                leaprag_api_url = settings.power_user?.leaprag_api_url || '';
-            }
-        } catch (error) {
-            console.error('Error reading LeapRAG API key:', error);
-        }
+        const fileContent = safeReadFileSync(pathToSettings, 'utf-8');
+        const settings = fileContent !== null ? JSON.parse(typeof fileContent === 'string' ? fileContent : fileContent.toString('utf-8')) : {};
+
+        leaprag_api_url = settings?.power_user?.leaprag_api_url || '';
+        leaprag_apikey = settings?.power_user?.leaprag_api_ || '';
 
         request.user = {
             profile: {
@@ -874,22 +869,11 @@ export async function setUserDataMiddleware(request, response, next) {
     }
 
     const directories = getUserDirectories(handle);
-    let leaprag_apikey = '';
-
-    try {
-        const pathToSettings = path.join(directories.root, SETTINGS_FILE);
-        if (fs.existsSync(pathToSettings)) {
-            const settings = JSON.parse(fs.readFileSync(pathToSettings, 'utf8'));
-            leaprag_apikey = settings.power_user?.leaprag_apikey || '';
-        }
-    } catch (error) {
-        console.error('Error reading LeapRAG API key:', error);
-    }
-
     request.user = {
         profile: {
             ...user,
-            leaprag_apikey: leaprag_apikey,
+            leaprag_apikey,
+            leaprag_api_url,
         },
         directories: directories,
     };

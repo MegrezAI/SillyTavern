@@ -364,40 +364,39 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
 
         const kbId = chatData[0].chat_metadata.leaprag_kb_id ?? '';
         const shouldCreateKB = request.body.create_kb;
-
-        if (kbId) {
+        const shouldUseRAG = chatData[0].chat_metadata.update_leaprag;
+        if (kbId && shouldUseRAG) {
             if (shouldCreateKB) {
                 await createKnowledge(request.user.profile, fileName, kbId);
             }
-        }
+            if (Array.isArray(chatData) && chatData.length >= 2) {
+                const last = chatData[chatData.length - 1];
+                const secondLast = chatData[chatData.length - 2];
 
-        if (Array.isArray(chatData) && chatData.length >= 2) {
-            const last = chatData[chatData.length - 1];
-            const secondLast = chatData[chatData.length - 2];
+                const isValidQAPair =
+                    secondLast?.is_user === true &&
+                    last?.is_user === false &&
+                    typeof secondLast.mes === 'string' && secondLast.mes.trim() &&
+                    typeof last.mes === 'string' && last.mes.trim();
 
-            const isValidQAPair =
-                secondLast?.is_user === true &&
-                last?.is_user === false &&
-                typeof secondLast.mes === 'string' && secondLast.mes.trim() &&
-                typeof last.mes === 'string' && last.mes.trim();
 
-            if (isValidQAPair) {
-                try {
-                    await uploadChatContent(
-                        request.user.profile,
-                        secondLast.mes,
-                        last.mes,
-                        kbId,
-                        secondLast.name || 'User',
-                        last.name || 'AI',
-                        last.gen_finished,
-                    );
-                } catch (err) {
-                    console.error('upload chat content to knowledge failed:', err);
+                if (isValidQAPair) {
+                    try {
+                        await uploadChatContent(
+                            request.user.profile,
+                            secondLast.mes,
+                            last.mes,
+                            kbId,
+                            secondLast.name || 'User',
+                            last.name || 'AI',
+                            last.gen_finished,
+                        );
+                    } catch (err) {
+                        console.error('upload chat content to knowledge failed:', err);
+                    }
                 }
             }
         }
-
 
         if (checkIntegrity && !request.body.force) {
             const integritySlug = chatData?.[0]?.chat_metadata?.integrity;

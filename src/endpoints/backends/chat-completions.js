@@ -795,7 +795,7 @@ async function sendDeepSeekRequest(request, response) {
             ...bodyParams,
         };
 
-        if (Array.isArray(requestBody.messages) && requestBody.messages.length > 0) {
+        if (request.body.leaprag_kb_id && Array.isArray(requestBody.messages) && requestBody.messages.length > 0) {
             const rawLastMessages = request.body.messages[request.body.messages.length - 1];
             const lastMessage = requestBody.messages[requestBody.messages.length - 1];
             if (lastMessage.role === 'user' && rawLastMessages.role !== 'system') {

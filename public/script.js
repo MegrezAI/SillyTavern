@@ -4126,6 +4126,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     }
 
     if (isImpersonate) {
+        chat_metadata.update_leaprag = false;
         force_name2 = false;
     }
 
@@ -4801,8 +4802,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     }
 
     const kbId = chat_metadata?.leaprag_kb_id;
-    if (kbId) {
+    if (kbId && !isImpersonate) {
         generate_data.leaprag_kb_id = kbId;
+        chat_metadata.update_leaprag = true;
     }
 
     await eventSource.emit(event_types.GENERATE_AFTER_DATA, generate_data);
