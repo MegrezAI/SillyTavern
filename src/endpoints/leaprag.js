@@ -18,6 +18,8 @@ export async function createKnowledge(user_profile, name, kb_id = '') {
         const requestBody = {
             name: name,
             language: 'Chinese',
+            use_raptor: false,
+            extract_metadata: false,
         };
 
         if (kb_id) {
