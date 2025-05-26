@@ -829,7 +829,7 @@ export async function setUserDataMiddleware(request, response, next) {
         const settings = fileContent !== null ? JSON.parse(typeof fileContent === 'string' ? fileContent : fileContent.toString('utf-8')) : {};
 
         leaprag_api_url = settings?.power_user?.leaprag_api_url || '';
-        leaprag_apikey = settings?.power_user?.leaprag_api_ || '';
+        leaprag_apikey = settings?.power_user?.leaprag_apikey || '';
 
         request.user = {
             profile: {

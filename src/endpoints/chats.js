@@ -364,7 +364,7 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
 
         const kbId = chatData[0].chat_metadata.leaprag_kb_id ?? '';
         const shouldCreateKB = request.body.create_kb;
-        const shouldUseRAG = chatData[0].chat_metadata.update_leaprag;
+        const shouldUseRAG = chatData[0].chat_metadata.use_leaprag;
         if (kbId && shouldUseRAG) {
             if (shouldCreateKB) {
                 await createKnowledge(request.user.profile, fileName, kbId);

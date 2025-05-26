@@ -4126,7 +4126,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     }
 
     if (isImpersonate) {
-        chat_metadata.update_leaprag = false;
+        chat_metadata.use_leaprag = false;
         force_name2 = false;
     }
 
@@ -4804,7 +4804,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     const kbId = chat_metadata?.leaprag_kb_id;
     if (kbId && !isImpersonate) {
         generate_data.leaprag_kb_id = kbId;
-        chat_metadata.update_leaprag = true;
+        chat_metadata.use_leaprag = true;
     }
 
     await eventSource.emit(event_types.GENERATE_AFTER_DATA, generate_data);
@@ -9856,6 +9856,7 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
         const kbId = uuidv4();
         chat_metadata.leaprag_kb_id = kbId;
         characters[this_chid].create_kb = true;
+        chat_metadata.use_leaprag = true;
 
         $('#selected_chat_pole').val(characters[this_chid].chat);
         await getChat();
