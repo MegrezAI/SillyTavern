@@ -115,6 +115,88 @@ function getOpenRouterPlugins(request) {
 }
 
 /**
+ * Add memory content to messages
+ * @param {object} request Express request
+ * @param {object[]} messages Array of messages
+ * @returns {Promise<object[]>} Processed messages array
+ */
+async function addMemoryToMessages(request, messages) {
+    if (!request.body.leaprag_kb_id && (!Array.isArray(messages) || messages.length === 0)) {
+        return messages;
+    }
+
+    const lastMessage = messages[messages.length - 1];
+    const rawLastMessages = request.body.messages[request.body.messages.length - 1];
+
+    // Get question content based on different API sources
+    const getQuestionContent = (message) => {
+        switch (request.body.chat_completion_source) {
+            case CHAT_COMPLETION_SOURCES.MAKERSUITE:
+                return message.parts
+                    ?.filter(part => part.text)
+                    .map(part => part.text)
+                    .join(' ') || '';
+
+            case CHAT_COMPLETION_SOURCES.CLAUDE:
+            case CHAT_COMPLETION_SOURCES.OPENAI:
+            case CHAT_COMPLETION_SOURCES.OPENROUTER:
+            case CHAT_COMPLETION_SOURCES.CUSTOM:
+            default:
+                // Standard chat completion format
+                return message.content || '';
+        }
+    };
+
+    // Add memory content based on different API sources
+    const addMemoryContent = (message, memoryPrefix) => {
+        switch (request.body.chat_completion_source) {
+            case CHAT_COMPLETION_SOURCES.MAKERSUITE:
+                // Gemini format
+                if (message.parts) {
+                    message.parts.unshift({ text: memoryPrefix });
+                }
+                break;
+
+            case CHAT_COMPLETION_SOURCES.CLAUDE:
+            case CHAT_COMPLETION_SOURCES.OPENAI:
+            case CHAT_COMPLETION_SOURCES.OPENROUTER:
+            case CHAT_COMPLETION_SOURCES.CUSTOM:
+            default:
+                // Standard chat completion format
+                if (message.content) {
+                    message.content = memoryPrefix + message.content;
+                }
+                break;
+        }
+    };
+
+    const isUserMessage = lastMessage.role === 'user' ||
+        (lastMessage.parts && lastMessage.parts.some(part => part.role === 'user'));
+
+    if (isUserMessage && rawLastMessages.role !== 'system') {
+        const question = getQuestionContent(lastMessage);
+
+        if (question) {
+            const memoryContent = await retrievalMemories(request.user.profile, {
+                question: question,
+                kb_ids: [request.body.leaprag_kb_id],
+            });
+
+            if (memoryContent) {
+                const memoryPrefix = `<memory>\n${memoryContent}\n</memory>\n\n` +
+                    `Note: The real-world user is playing the role of "${request.body.user_name}" in this fictional conversation.
+                    All "${request.body.user_name}:" lines in memory are the user's lines.
+                    All "${request.body.char_name}:" lines are the model's response. \n\n`;
+
+                addMemoryContent(lastMessage, memoryPrefix);
+            }
+        }
+    }
+
+    return messages;
+}
+
+/**
  * Sends a request to Claude API.
  * @param {express.Request} request Express request
  * @param {express.Response} response Express response
@@ -355,7 +437,7 @@ async function sendMakerSuiteRequest(request, response) {
         responseSchema: request.body.responseSchema,
     };
 
-    function getGeminiBody() {
+    async function getGeminiBody() {
         if (!Array.isArray(generationConfig.stopSequences) || !generationConfig.stopSequences.length) {
             delete generationConfig.stopSequences;
         }
@@ -379,7 +461,7 @@ async function sendMakerSuiteRequest(request, response) {
         const tools = [];
         const prompt = convertGooglePrompt(request.body.messages, model, useSystemPrompt, getPromptNames(request));
         let safetySettings = GEMINI_SAFETY;
-
+        prompt.contents = await addMemoryToMessages(request, prompt.contents);
         // These models do not support setting the threshold to OFF at all.
         if (['gemini-1.5-pro-001', 'gemini-1.5-flash-001', 'gemini-1.5-flash-8b-exp-0827', 'gemini-1.5-flash-8b-exp-0924', 'gemini-pro', 'gemini-1.0-pro', 'gemini-1.0-pro-001', 'gemma-3-27b-it'].includes(model)) {
             safetySettings = GEMINI_SAFETY.map(setting => ({ ...setting, threshold: 'BLOCK_NONE' }));
@@ -430,7 +512,7 @@ async function sendMakerSuiteRequest(request, response) {
         return body;
     }
 
-    const body = getGeminiBody();
+    const body = await getGeminiBody();
     console.debug('Google AI Studio request:', body);
 
     try {
@@ -779,7 +861,8 @@ async function sendDeepSeekRequest(request, response) {
         }
 
         const postProcessType = String(request.body.model).endsWith('-reasoner') ? 'deepseek-reasoner' : 'deepseek';
-        const processedMessages = postProcessPrompt(request.body.messages, postProcessType, getPromptNames(request));
+        let processedMessages = postProcessPrompt(request.body.messages, postProcessType, getPromptNames(request));
+        processedMessages = await addMemoryToMessages(request, processedMessages);
 
         const requestBody = {
             'messages': processedMessages,
@@ -795,23 +878,6 @@ async function sendDeepSeekRequest(request, response) {
             ...bodyParams,
         };
 
-        if (request.body.leaprag_kb_id && Array.isArray(requestBody.messages) && requestBody.messages.length > 0) {
-            const rawLastMessages = request.body.messages[request.body.messages.length - 1];
-            const lastMessage = requestBody.messages[requestBody.messages.length - 1];
-            if (lastMessage.role === 'user' && rawLastMessages.role !== 'system') {
-                const memoryContent = await retrievalMemories(request.user.profile, {
-                    question: lastMessage.content,
-                    kb_ids: [request.body.leaprag_kb_id],
-                });
-                console.info('Retrieved memory content:', { memoryContent });
-                if (memoryContent) {
-                    lastMessage.content = `<memory>\n${memoryContent}\n</memory>\n\n` +
-                        `Note: The real-world user is playing the role of "${request.body.user_name}" in this fictional conversation.
-                        All "${request.body.user_name}:" lines in memory are the user's lines.
-                        All "${request.body.char_name}:" lines are the model's response. \n\n` + lastMessage.content;
-                }
-            }
-        }
         const config = {
             method: 'POST',
             headers: {
