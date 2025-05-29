@@ -77,17 +77,6 @@ import { init as settingsInit } from './endpoints/settings.js';
 import { redirectDeprecatedEndpoints, ServerStartup, setupPrivateEndpoints } from './server-startup.js';
 import { diskCache } from './endpoints/characters.js';
 
-// proxy
-import { bootstrap } from 'global-agent';
-if (process.env.GLOBAL_AGENT_HTTP_PROXY || process.env.GLOBAL_AGENT_HTTPS_PROXY) {
-    const proxy = process.env.GLOBAL_AGENT_HTTPS_PROXY || process.env.GLOBAL_AGENT_HTTP_PROXY;
-    console.info(`[global-agent] Proxy enabled: ${proxy}`);
-    bootstrap();
-} else {
-    console.info('[global-agent] No proxy configured, proceeding without proxy.');
-}
-
-
 // Unrestrict console logs display limit
 util.inspect.defaultOptions.maxArrayLength = null;
 util.inspect.defaultOptions.maxStringLength = null;
