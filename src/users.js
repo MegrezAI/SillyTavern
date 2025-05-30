@@ -19,7 +19,7 @@ import { getConfigValue, color, delay, generateTimestamp, safeReadFileSync } fro
 import { readSecret, writeSecret } from './endpoints/secrets.js';
 import { getContentOfType } from './endpoints/content-manager.js';
 import { serverDirectory } from './server-directory.js';
-import { findUserInfoById, findAllUsersInfo, updateUserInfo } from './db/user.js';
+import { findUserInfoById, findAllUserInfo, updateUserInfo } from './db/user.js';
 
 export const KEY_PREFIX = 'user:';
 const AVATAR_PREFIX = 'avatar:';
@@ -626,9 +626,9 @@ export async function getAllUserHandles() {
 }
 
 
-export async function getAllUsersFromDb() {
+export async function getAllUserInfoFromDb() {
     try {
-        const users = await findAllUsersInfo();
+        const users = await findAllUserInfo();
         return users;
     } catch (error) {
         console.error('Error getting user handles:', error);
@@ -637,7 +637,7 @@ export async function getAllUsersFromDb() {
 }
 
 
-export async function getUserFromDb(group_id) {
+export async function getUserInfoFromDb(group_id) {
     try {
         const user = await findUserInfoById(group_id);
         if (!user) {

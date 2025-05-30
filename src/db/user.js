@@ -49,7 +49,7 @@ export async function findUserInfoById(group_id) {
     }
 }
 
-export async function findAllUsersInfo() {
+export async function findAllUserInfo() {
     try {
         const users = await db.select().from(userInfo);
         return users;
