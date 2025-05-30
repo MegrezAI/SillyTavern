@@ -7,7 +7,7 @@ export async function createUserInfo(user) {
         await db
             .insert(userInfo)
             .values({
-                user_id: user.user_id,
+                group_id: user.group_id,
                 name: user.name,
                 enabled: user.enabled,
                 created_at: Date.now(),
@@ -28,7 +28,7 @@ export async function updateUserInfo(user) {
                 enabled: user.enabled,
                 updated_at: Date.now(),
             })
-            .where(eq(userInfo.user_id, user.user_id));
+            .where(eq(userInfo.group_id, user.group_id));
     } catch (error) {
         console.error('Error updating user in database:', error);
         throw error;
@@ -37,10 +37,10 @@ export async function updateUserInfo(user) {
 
 
 
-export async function findUserById(user_id) {
+export async function findUserById(group_id) {
     try {
         const user = await db.query.userInfo.findFirst({
-            where: eq(userInfo.user_id, user_id),
+            where: eq(userInfo.group_id, group_id),
         });
         return user;
     } catch (error) {

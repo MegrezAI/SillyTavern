@@ -209,7 +209,7 @@ router.post('/create', requireAdminMiddleware, async (request, response) => {
         if (groupId) {
             try {
                 await createUserInfo({
-                    user_id: groupId,
+                    group_id: groupId,
                     name: newUser.name,
                     enabled: newUser.enabled,
                 });

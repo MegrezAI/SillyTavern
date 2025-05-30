@@ -637,14 +637,14 @@ export async function getAllUsersFromDb() {
 }
 
 
-export async function getUserFromDb(userid) {
+export async function getUserFromDb(group_id) {
     try {
-        const user = await findUserById(userid);
+        const user = await findUserById(group_id);
         if (!user) {
             return null;
         }
         return {
-            userid: user.user_id,
+            group_id: user.group_id,
             name: user.name,
             enabled: user.enabled,
             created_at: user.created_at,

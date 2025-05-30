@@ -27,7 +27,7 @@ export async function groupIdApiAuthMiddleware(request, response, next) {
         request.user = {
             profile: {
                 ...user,
-                handle: user.user_id,
+                handle: user.group_id,
                 created: user.created_at,
                 password: '',
                 salt: '',
