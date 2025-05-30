@@ -1,4 +1,4 @@
-import { findUserById } from '../db/user.js';
+import { findUserInfoById } from '../db/user.js';
 import { getUserDirectories } from '../users.js';
 
 
@@ -19,7 +19,7 @@ export async function groupIdApiAuthMiddleware(request, response, next) {
             return next();
         }
 
-        const user = await findUserById(groupId);
+        const user = await findUserInfoById(groupId);
         if (!user) {
             return response.status(401).json({ error: 'Invalid user ID' });
         }

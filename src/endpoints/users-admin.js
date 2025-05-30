@@ -16,7 +16,7 @@ import {
     ensurePublicDirectoriesExist,
 } from '../users.js';
 import { DEFAULT_USER } from '../constants.js';
-import { createUserInfo, findUserById } from '../db/user.js';
+import { createUserInfo, findUserInfoById } from '../db/user.js';
 
 
 export const router = express.Router();
@@ -182,7 +182,7 @@ router.post('/create', requireAdminMiddleware, async (request, response) => {
 
         if (groupId) {
             try {
-                const existingUser = await findUserById(groupId);
+                const existingUser = await findUserInfoById(groupId);
                 if (existingUser) {
                     console.warn('Create user failed: User with that group-id already exists in database');
                     return response.status(409).json({ error: 'User already exists' });
