@@ -19,6 +19,7 @@ import { getConfigValue, color, delay, generateTimestamp, safeReadFileSync } fro
 import { readSecret, writeSecret } from './endpoints/secrets.js';
 import { getContentOfType } from './endpoints/content-manager.js';
 import { serverDirectory } from './server-directory.js';
+import { findUserById, findAllUsers, updateUserInfo } from './db/user.js';
 
 export const KEY_PREFIX = 'user:';
 const AVATAR_PREFIX = 'avatar:';
@@ -624,6 +625,47 @@ export async function getAllUserHandles() {
     return handles;
 }
 
+
+export async function getAllUsersFromDb() {
+    try {
+        const users = await findAllUsers();
+        return users;
+    } catch (error) {
+        console.error('Error getting user handles:', error);
+        return [];
+    }
+}
+
+
+export async function getUserFromDb(userid) {
+    try {
+        const user = await findUserById(userid);
+        if (!user) {
+            return null;
+        }
+        return {
+            userid: user.user_id,
+            name: user.name,
+            enabled: user.enabled,
+            created_at: user.created_at,
+            updated_at: user.updated_at,
+        };
+    } catch (error) {
+        console.error('Error getting user:', error);
+        return null;
+    }
+}
+
+
+export async function saveUserInfo(user) {
+    try {
+        await updateUserInfo(user);
+    } catch (error) {
+        console.error('Error saving user:', error);
+        throw error;
+    }
+}
+
 /**
  * Gets the directories listing for the provided user.
  * @param {string} handle User handle
@@ -983,6 +1025,11 @@ function createExtensionsRouteHandler(directoryFn) {
  * @returns {any}
  */
 export function requireAdminMiddleware(request, response, next) {
+
+    if (request.headers['x-group-id']) {
+        return next();
+    }
+
     if (!request.user) {
         return response.sendStatus(403);
     }

@@ -16,6 +16,8 @@ import {
     ensurePublicDirectoriesExist,
 } from '../users.js';
 import { DEFAULT_USER } from '../constants.js';
+import { createUserInfo, findUserById } from '../db/user.js';
+
 
 export const router = express.Router();
 
@@ -156,23 +158,39 @@ router.post('/demote', requireAdminMiddleware, async (request, response) => {
 });
 
 router.post('/create', requireAdminMiddleware, async (request, response) => {
+    const headerValue = request.headers['x-group-id'];
+    const groupId = headerValue ? (Array.isArray(headerValue) ? headerValue[0] : headerValue) : null;
+
     try {
-        if (!request.body.handle || !request.body.name) {
+        if ((!request.body.handle && !groupId) || !request.body.name) {
             console.warn('Create user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
 
         const handles = await getAllUserHandles();
-        const handle = lodash.kebabCase(String(request.body.handle).toLowerCase().trim());
+        const handle = groupId || lodash.kebabCase(String(request.body.handle).toLowerCase().trim());
 
         if (!handle) {
             console.warn('Create user failed: Invalid handle');
             return response.status(400).json({ error: 'Invalid handle' });
         }
 
-        if (handles.some(x => x === handle)) {
+        if (handles.some(x => x === handle) && !groupId) {
             console.warn('Create user failed: User with that handle already exists');
             return response.status(409).json({ error: 'User already exists' });
+        }
+
+        if (groupId) {
+            try {
+                const existingUser = await findUserById(groupId);
+                if (existingUser) {
+                    console.warn('Create user failed: User with that group-id already exists in database');
+                    return response.status(409).json({ error: 'User already exists' });
+                }
+            } catch (dbError) {
+                console.error('Failed to check user in database:', dbError);
+                return response.status(500).json({ error: 'Failed to check user existence' });
+            }
         }
 
         const salt = getPasswordSalt();
@@ -187,6 +205,19 @@ router.post('/create', requireAdminMiddleware, async (request, response) => {
             admin: !!request.body.admin,
             enabled: true,
         };
+
+        if (groupId) {
+            try {
+                await createUserInfo({
+                    user_id: groupId,
+                    name: newUser.name,
+                    enabled: newUser.enabled,
+                });
+            } catch (dbError) {
+                console.error('Failed to save user to database:', dbError);
+                return response.status(500).json({ error: 'Failed to create user in database' });
+            }
+        }
 
         await storage.setItem(toKey(handle), newUser);
 

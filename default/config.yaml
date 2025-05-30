@@ -22,6 +22,8 @@ dnsPreferIPv6: false
 autorunHostname: "auto"
 # Server port
 port: 8000
+# Database Url
+databaseUrl: postgresql://postgres:leap0715@localhost:5432/tavern
 # Overrides the port for autorun in browser.
 # - Use -1 to use the server port.
 # - Specify a port to override the default.
@@ -61,7 +63,7 @@ requestProxy:
     - localhost
     - 127.0.0.1
 # Enable multi-user mode
-enableUserAccounts: false
+enableUserAccounts: true
 # Enable discreet login mode: hides user list on the login screen
 enableDiscreetLogin: false
 # Enable's authlia based auto login. Only enable this if you
@@ -83,7 +85,7 @@ perUserBasicAuth: false
 ## Set to a negative number to disable session expiration
 sessionTimeout: -1
 # Disable CSRF protection - NOT RECOMMENDED
-disableCsrfProtection: false
+disableCsrfProtection: true
 # Disable startup security checks - NOT RECOMMENDED
 securityOverride: false
 # -- LOGGING CONFIGURATION --
