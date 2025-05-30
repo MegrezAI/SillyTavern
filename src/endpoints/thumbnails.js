@@ -9,6 +9,8 @@ import { Jimp, JimpMime } from '../jimp.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 import { getConfigValue } from '../util.js';
+import { DEFAULT_USER } from '../constants.js';
+import { getUserDirectories } from '../users.js';
 
 const thumbnailsEnabled = !!getConfigValue('thumbnails.enabled', true, 'boolean');
 const quality = Math.min(100, Math.max(1, parseInt(getConfigValue('thumbnails.quality', 95, 'number'))));
@@ -213,8 +215,9 @@ router.get('/', async function (request, response) {
             response.setHeader('Content-Type', contentType);
             return response.send(originalFile);
         }
-
-        const pathToCachedFile = await generateThumbnail(request.user.directories, type, file);
+        const handle = DEFAULT_USER.handle;
+        const directories = getUserDirectories(handle);
+        const pathToCachedFile = await generateThumbnail(directories, type, file);
 
         if (!pathToCachedFile) {
             return response.sendStatus(404);
