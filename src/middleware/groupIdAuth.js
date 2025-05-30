@@ -21,7 +21,7 @@ export async function groupIdApiAuthMiddleware(request, response, next) {
 
         const user = await findUserInfoById(groupId);
         if (!user) {
-            return response.status(401).json({ error: 'Invalid user ID' });
+            return response.status(401).json({ error: `Invalid group id ${groupId}` });
         }
 
         request.user = {

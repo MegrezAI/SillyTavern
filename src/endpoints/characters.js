@@ -1177,6 +1177,28 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
     return response.sendStatus(200);
 });
 
+router.get('/tags', async function (request, response) {
+    try {
+        const handle = DEFAULT_USER.handle;
+        const directories = getUserDirectories(handle);
+
+        const files = fs.readdirSync(directories.characters);
+        const processingPromises = files.map(file => processCharacter(file, directories, { shallow: useShallowCharacters }));
+        const data = (await Promise.all(processingPromises)).filter(c => c.name);
+
+        const allTags = new Set();
+        data.forEach(char => {
+            const tags = char.data?.tags || [];
+            tags.filter(tag => tag && tag.trim()).forEach(tag => allTags.add(tag.trim()));
+        });
+
+        return response.send(Array.from(allTags).sort());
+    } catch (err) {
+        console.error(err);
+        response.sendStatus(500);
+    }
+});
+
 /**
  * HTTP POST endpoint for the "/api/characters/all" route.
  *
@@ -1201,6 +1223,59 @@ router.post('/all', async function (request, response) {
         const processingPromises = pngFiles.map(file => processCharacter(file, directories, { shallow: useShallowCharacters }));
         const data = (await Promise.all(processingPromises)).filter(c => c.name);
         return response.send(data);
+    } catch (err) {
+        console.error(err);
+        response.sendStatus(500);
+    }
+});
+
+
+router.get('/list', async function (request, response) {
+    try {
+        const handle = DEFAULT_USER.handle;
+        const directories = getUserDirectories(handle);
+
+        const { q, tag, page, page_size } = request.query;
+        const pageNum = page ? parseInt(String(page)) : 1;
+        const pageSize = page_size ? parseInt(String(page_size)) : 20;
+
+        const files = fs.readdirSync(directories.characters);
+        const pngFiles = files.filter(file => file.endsWith('.png'));
+        const processingPromises = pngFiles.map(file => processCharacter(file, directories, { shallow: useShallowCharacters }));
+        let data = (await Promise.all(processingPromises)).filter(c => c.name);
+
+        const count = data.length;
+
+        if (q) {
+            const searchTerm = decodeURIComponent(String(q)).toLowerCase();
+            data = data.filter(char => {
+                const searchableFields = [
+                    char.name,
+                    char.data?.name,
+                    char.data?.description,
+                ].filter(Boolean).map(field => field.toLowerCase());
+
+                return searchableFields.some(field => field.includes(searchTerm));
+            });
+        }
+
+        if (tag) {
+            const tags = String(tag).split(',').map(t => decodeURIComponent(t.trim()));
+            data = data.filter(char => {
+                const charTags = char.data?.tags || [];
+                return tags.every(t => charTags.includes(t));
+            });
+        }
+
+
+        const start = (pageNum - 1) * pageSize;
+        const end = start + pageSize;
+        data = data.slice(start, end);
+
+        return response.send({
+            count,
+            data,
+        });
     } catch (err) {
         console.error(err);
         response.sendStatus(500);
