@@ -37,19 +37,19 @@ export async function updateUserInfo(user) {
 
 
 
-export async function findUserById(group_id) {
+export async function findUserInfoById(group_id) {
     try {
         const user = await db.query.userInfo.findFirst({
             where: eq(userInfo.group_id, group_id),
         });
         return user;
     } catch (error) {
-        console.error('Error getting user from database:', error);
+        console.error('Error getting user info from database:', error);
         throw error;
     }
 }
 
-export async function findAllUsers() {
+export async function findAllUsersInfo() {
     try {
         const users = await db.select().from(userInfo);
         return users;
