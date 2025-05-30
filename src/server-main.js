@@ -76,6 +76,7 @@ import { checkForNewContent } from './endpoints/content-manager.js';
 import { init as settingsInit } from './endpoints/settings.js';
 import { redirectDeprecatedEndpoints, ServerStartup, setupPrivateEndpoints } from './server-startup.js';
 import { diskCache } from './endpoints/characters.js';
+import { groupIdApiAuthMiddleware } from './middleware/groupIdAuth.js';
 
 // Unrestrict console logs display limit
 util.inspect.defaultOptions.maxArrayLength = null;
@@ -230,7 +231,13 @@ app.use(express.static(path.join(serverDirectory, 'public'), {}));
 app.use('/api/users', usersPublicRouter);
 
 // Everything below this line requires authentication
-app.use(requireLoginMiddleware);
+app.use((req, res, next) => {
+    if (req.headers['x-group-id']) {
+        return groupIdApiAuthMiddleware(req, res, next);
+    }
+    return requireLoginMiddleware(req, res, next);
+});
+
 app.post('/api/ping', (request, response) => {
     if (request.query.extend && request.session) {
         request.session.touch = Date.now();
