@@ -12,7 +12,7 @@ import mime from 'mime-types';
 import { Jimp, JimpMime } from '../jimp.js';
 import storage from 'node-persist';
 
-import { AVATAR_WIDTH, AVATAR_HEIGHT, DEFAULT_USER } from '../constants.js';
+import { AVATAR_WIDTH, AVATAR_HEIGHT, DEFAULT_USER, SETTINGS_FILE } from '../constants.js';
 import { default as validateAvatarUrlMiddleware, getFileNameValidationFunction } from '../middleware/validateFileName.js';
 import { deepMerge, humanizedISO8601DateTime, tryParse, extractFileFromZipBuffer, MemoryLimitedMap, getConfigValue, mutateJsonString } from '../util.js';
 import { TavernCardValidator } from '../validator/TavernCardValidator.js';
@@ -1181,18 +1181,13 @@ router.get('/tags', async function (request, response) {
     try {
         const handle = DEFAULT_USER.handle;
         const directories = getUserDirectories(handle);
+        const pathToSettings = path.join(directories.root, SETTINGS_FILE);
+        const settings = fs.readFileSync(pathToSettings, 'utf8');
+        const { tags } = JSON.parse(settings);
 
-        const files = fs.readdirSync(directories.characters);
-        const processingPromises = files.map(file => processCharacter(file, directories, { shallow: useShallowCharacters }));
-        const data = (await Promise.all(processingPromises)).filter(c => c.name);
 
-        const allTags = new Set();
-        data.forEach(char => {
-            const tags = char.data?.tags || [];
-            tags.filter(tag => tag && tag.trim()).forEach(tag => allTags.add(tag.trim()));
-        });
 
-        return response.send(Array.from(allTags).sort());
+        return response.send(tags);
     } catch (err) {
         console.error(err);
         response.sendStatus(500);
@@ -1239,6 +1234,10 @@ router.get('/list', async function (request, response) {
         const pageNum = page ? parseInt(String(page)) : 1;
         const pageSize = page_size ? parseInt(String(page_size)) : 20;
 
+        const pathToSettings = path.join(directories.root, SETTINGS_FILE);
+        const settings = fs.readFileSync(pathToSettings, 'utf8');
+        const { tag_map, tags } = JSON.parse(settings);
+
         const files = fs.readdirSync(directories.characters);
         const pngFiles = files.filter(file => file.endsWith('.png'));
         const processingPromises = pngFiles.map(file => processCharacter(file, directories, { shallow: useShallowCharacters }));
@@ -1260,11 +1259,14 @@ router.get('/list', async function (request, response) {
         }
 
         if (tag) {
-            const tags = String(tag).split(',').map(t => decodeURIComponent(t.trim()));
-            data = data.filter(char => {
-                const charTags = char.data?.tags || [];
-                return tags.every(t => charTags.includes(t));
-            });
+            const tagId = decodeURIComponent(String(tag).trim());
+            const tagInfo = tags.find(t => t.id === tagId);
+            if (tagInfo) {
+                data = data.filter(char => {
+                    const charTagIds = tag_map[char.avatar] || [];
+                    return charTagIds.includes(tagId);
+                });
+            }
         }
 
 
