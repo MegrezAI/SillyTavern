@@ -1210,12 +1210,9 @@ router.get('/tags', async function (request, response) {
  */
 router.post('/all', async function (request, response) {
     try {
-        const handle = DEFAULT_USER.handle;
-        const directories = getUserDirectories(handle);
-
-        const files = fs.readdirSync(directories.characters);
+        const files = fs.readdirSync(request.user.directories.characters);
         const pngFiles = files.filter(file => file.endsWith('.png'));
-        const processingPromises = pngFiles.map(file => processCharacter(file, directories, { shallow: useShallowCharacters }));
+        const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, { shallow: useShallowCharacters }));
         const data = (await Promise.all(processingPromises)).filter(c => c.name);
         return response.send(data);
     } catch (err) {
