@@ -1243,8 +1243,6 @@ router.get('/list', async function (request, response) {
         const processingPromises = pngFiles.map(file => processCharacter(file, directories, { shallow: useShallowCharacters }));
         let data = (await Promise.all(processingPromises)).filter(c => c.name);
 
-        const count = data.length;
-
         if (q) {
             const searchTerm = decodeURIComponent(String(q)).toLowerCase();
             data = data.filter(char => {
@@ -1269,6 +1267,7 @@ router.get('/list', async function (request, response) {
             }
         }
 
+        const count = data.length;
 
         const start = (pageNum - 1) * pageSize;
         const end = start + pageSize;
