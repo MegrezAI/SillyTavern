@@ -1,17 +1,8 @@
 import { findUserInfoById } from '../db/user.js';
 import { getUserDirectories } from '../users.js';
 
-
-
 export async function groupIdApiAuthMiddleware(request, response, next) {
     try {
-        if (
-            request.method === 'POST' &&
-            request.path === '/api/users/create'
-        ) {
-            return next();
-        }
-
         const headerValue = request.headers['x-group-id'];
         const groupId = headerValue ? (Array.isArray(headerValue) ? headerValue[0] : headerValue) : null;
 
@@ -19,6 +10,17 @@ export async function groupIdApiAuthMiddleware(request, response, next) {
             return next();
         }
 
+        // For user creation endpoint, set temporary user info
+        if (request.method === 'POST' && request.path === '/api/users/create') {
+            request.user = {
+                profile: {
+                    admin: true,
+                },
+            };
+            return next();
+        }
+
+        // For other endpoints, verify user exists
         const user = await findUserInfoById(groupId);
         if (!user) {
             return response.status(401).json({ error: `Invalid group id ${groupId}` });
@@ -40,7 +42,7 @@ export async function groupIdApiAuthMiddleware(request, response, next) {
 
         next();
     } catch (error) {
-        console.error('Error in internalApiAuthMiddleware:', error);
+        console.error('Error in groupIdApiAuthMiddleware:', error);
         return response.status(500).json({ error: 'Internal server error' });
     }
 }

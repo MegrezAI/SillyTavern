@@ -1025,11 +1025,6 @@ function createExtensionsRouteHandler(directoryFn) {
  * @returns {any}
  */
 export function requireAdminMiddleware(request, response, next) {
-
-    if (request.headers['x-group-id']) {
-        return next();
-    }
-
     if (!request.user) {
         return response.sendStatus(403);
     }
