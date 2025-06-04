@@ -215,8 +215,8 @@ router.get('/', async function (request, response) {
             response.setHeader('Content-Type', contentType);
             return response.send(originalFile);
         }
-        const handle = DEFAULT_USER.handle;
-        const directories = getUserDirectories(handle);
+        // If x-group-id is included in the request header, the default user's directory is used
+        const directories = request.headers['x-group-id'] ? getUserDirectories(DEFAULT_USER.handle) : request.user.directories;
         const pathToCachedFile = await generateThumbnail(directories, type, file);
 
         if (!pathToCachedFile) {
