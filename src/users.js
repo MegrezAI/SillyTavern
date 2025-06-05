@@ -860,19 +860,17 @@ async function basicUserLogin(request) {
  * @param {import('express').NextFunction} next Next function
  */
 export async function setUserDataMiddleware(request, response, next) {
-    let leaprag_apikey = '';
-    let leaprag_api_url = '';
+    const defaultDirectories = getUserDirectories(DEFAULT_USER.handle);
+    const pathToSettings = path.join(defaultDirectories.root, SETTINGS_FILE);
+    const fileContent = safeReadFileSync(pathToSettings, 'utf-8');
+    const settings = fileContent !== null ? JSON.parse(typeof fileContent === 'string' ? fileContent : fileContent.toString('utf-8')) : {};
+    const leaprag_api_url = settings?.power_user?.leaprag_api_url || '';
+    const leaprag_apikey = settings?.power_user?.leaprag_apikey || '';
+
     // If user accounts are disabled, use the default user
     if (!ENABLE_ACCOUNTS) {
         const handle = DEFAULT_USER.handle;
         const directories = getUserDirectories(handle);
-
-        const pathToSettings = path.join(directories.root, SETTINGS_FILE);
-        const fileContent = safeReadFileSync(pathToSettings, 'utf-8');
-        const settings = fileContent !== null ? JSON.parse(typeof fileContent === 'string' ? fileContent : fileContent.toString('utf-8')) : {};
-
-        leaprag_api_url = settings?.power_user?.leaprag_api_url || '';
-        leaprag_apikey = settings?.power_user?.leaprag_apikey || '';
 
         request.user = {
             profile: {
