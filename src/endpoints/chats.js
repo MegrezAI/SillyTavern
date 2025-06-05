@@ -999,59 +999,39 @@ router.post('/recent', async function (request, response) {
 router.get('/list', async function (request, response) {
     try {
         const chatsDirectory = request.user.directories.chats;
-        const chatDirExists = fs.existsSync(chatsDirectory);
+        const dirents = await fs.promises.readdir(chatsDirectory, { withFileTypes: true });
+        const characterDirs = dirents.filter(d => d.isDirectory()).map(d => d.name);
 
-        if (!chatDirExists) {
-            fs.mkdirSync(chatsDirectory);
-            return response.send([]);
-        }
-
-        const characterDirs = fs.readdirSync(chatsDirectory)
-            .filter(dir => fs.statSync(path.join(chatsDirectory, dir)).isDirectory());
-
-        const allChats = [];
-
-        for (const characterDir of characterDirs) {
+        const allChats = await Promise.all(characterDirs.map(async (characterDir) => {
             const characterPath = path.join(chatsDirectory, characterDir);
-            const files = fs.readdirSync(characterPath);
+            const files = await fs.promises.readdir(characterPath);
             const jsonlFiles = files.filter(file => path.extname(file) === '.jsonl');
 
-            let latestFile = null;
-            let latestTime = 0;
+            if (jsonlFiles.length === 0) return null;
 
-            const fileStats = await Promise.all(jsonlFiles.map(async file => {
-                const pathToFile = path.join(characterPath, file);
-                const stats = await fs.promises.stat(pathToFile);
-                return { file, stats };
-            }));
+            const fileStats = await Promise.all(
+                jsonlFiles.map(async (file) => {
+                    const stats = await fs.promises.stat(path.join(characterPath, file));
+                    return { file, stats };
+                }),
+            );
 
-            for (const { file, stats } of fileStats) {
-                const fileTime = stats.ctime.getTime();
-                if (fileTime > latestTime) {
-                    latestTime = fileTime;
-                    latestFile = file;
-                }
-            }
+            // Always find the latest files
+            const latest = fileStats.reduce((a, b) => a.stats.ctime > b.stats.ctime ? a : b);
+            const chatInfo = await getChatInfo(path.join(characterPath, latest.file), { character: characterDir });
+            if (!chatInfo?.file_name) return null;
 
-            if (latestFile) {
-                const pathToFile = path.join(characterPath, latestFile);
-                const stats = await fs.promises.stat(pathToFile);
-                const chatInfo = await getChatInfo(pathToFile, { character: characterDir });
-                if (chatInfo.file_name) {
-                    allChats.push({
-                        file_name: chatInfo.file_name,
-                        last_mes: stats.mtime.getTime(),
-                        character: characterDir,
-                    });
-                }
-            }
-        }
+            return {
+                file_name: chatInfo.file_name,
+                last_mes: latest.stats.mtime.getTime(),
+                character: characterDir,
+            };
+        }));
 
-        allChats.sort((a, b) => b.last_mes - a.last_mes);
-
-        return response.send(allChats);
-    } catch (error) {
-        console.error('Failed to retrieve chat list:', error);
-        return response.status(500).json({ error: 'Failed to retrieve chat list' });
+        const finalResult = allChats.filter(Boolean).sort((a, b) => (b?.last_mes ?? 0) - (a?.last_mes ?? 0));
+        response.send(finalResult);
+    } catch (err) {
+        console.error('Failed to retrieve chat list:', err);
+        response.status(500).json({ error: 'Failed to retrieve chat list' });
     }
 });
