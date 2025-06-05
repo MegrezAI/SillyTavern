@@ -16,7 +16,7 @@ export async function createKnowledge(user_profile, name, kb_id = '') {
 
     try {
         const requestBody = {
-            name: name,
+            name: user_profile?.handle + '_' + name,
             language: 'Chinese',
             use_raptor: false,
             extract_metadata: false,
