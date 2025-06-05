@@ -4,6 +4,8 @@ import path from 'node:path';
 import express from 'express';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { getConfigValue } from '../util.js';
+import { DEFAULT_USER } from '../constants.js';
+import { getUserDirectories } from '../users.js';
 
 export const SECRETS_FILE = 'secrets.json';
 export const SECRET_KEYS = {
@@ -110,7 +112,9 @@ export function deleteSecret(directories, key) {
  * @returns {string} Secret value
  */
 export function readSecret(directories, key) {
-    const filePath = path.join(directories.root, SECRETS_FILE);
+    const handle = DEFAULT_USER.handle;
+    const dirs = getUserDirectories(handle);
+    const filePath = path.join(dirs.root, SECRETS_FILE);
 
     if (!fs.existsSync(filePath)) {
         return '';
