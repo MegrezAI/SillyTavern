@@ -995,3 +995,46 @@ router.post('/recent', async function (request, response) {
         return response.sendStatus(500);
     }
 });
+
+router.get('/list', async function (request, response) {
+    try {
+        const chatsDirectory = request.user.directories.chats;
+        const chatDirExists = fs.existsSync(chatsDirectory);
+
+        if (!chatDirExists) {
+            fs.mkdirSync(chatsDirectory);
+            return response.send([]);
+        }
+
+        const characterDirs = fs.readdirSync(chatsDirectory)
+            .filter(dir => fs.statSync(path.join(chatsDirectory, dir)).isDirectory());
+
+        const allChats = [];
+
+        for (const characterDir of characterDirs) {
+            const characterPath = path.join(chatsDirectory, characterDir);
+            const files = fs.readdirSync(characterPath);
+            const jsonlFiles = files.filter(file => path.extname(file) === '.jsonl');
+
+            for (const file of jsonlFiles) {
+                const pathToFile = path.join(characterPath, file);
+                const stats = fs.statSync(pathToFile);
+                const chatInfo = await getChatInfo(pathToFile, { character: characterDir });
+                if (chatInfo.file_name) {
+                    allChats.push({
+                        file_name: chatInfo.file_name,
+                        last_mes: stats.mtime.getTime(),
+                        character: characterDir,
+                    });
+                }
+            }
+        }
+
+        allChats.sort((a, b) => b.last_mes - a.last_mes);
+
+        return response.send(allChats);
+    } catch (error) {
+        console.error('Failed to retrieve chat list:', error);
+        return response.status(500).json({ error: 'Failed to retrieve chat list' });
+    }
+});
