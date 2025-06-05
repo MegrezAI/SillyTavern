@@ -1019,9 +1019,13 @@ router.get('/list', async function (request, response) {
             let latestFile = null;
             let latestTime = 0;
 
-            for (const file of jsonlFiles) {
+            const fileStats = await Promise.all(jsonlFiles.map(async file => {
                 const pathToFile = path.join(characterPath, file);
-                const stats = fs.statSync(pathToFile);
+                const stats = await fs.promises.stat(pathToFile);
+                return { file, stats };
+            }));
+
+            for (const { file, stats } of fileStats) {
                 const fileTime = stats.ctime.getTime();
                 if (fileTime > latestTime) {
                     latestTime = fileTime;
@@ -1031,7 +1035,7 @@ router.get('/list', async function (request, response) {
 
             if (latestFile) {
                 const pathToFile = path.join(characterPath, latestFile);
-                const stats = fs.statSync(pathToFile);
+                const stats = await fs.promises.stat(pathToFile);
                 const chatInfo = await getChatInfo(pathToFile, { character: characterDir });
                 if (chatInfo.file_name) {
                     allChats.push({
