@@ -5,18 +5,19 @@ function getLeapRagConfig(user_profile) {
     return {
         apiKey: user_profile?.leaprag_apikey,
         apiUrl: user_profile?.leaprag_api_url,
+        handle: user_profile?.handle,
     };
 }
 
 export async function createKnowledge(user_profile, name, kb_id = '') {
-    const { apiKey, apiUrl } = getLeapRagConfig(user_profile);
+    const { apiKey, apiUrl, handle } = getLeapRagConfig(user_profile);
     if (!apiKey || !apiUrl) {
         return null;
     }
 
     try {
         const requestBody = {
-            name: user_profile?.handle + '_' + name,
+            name: handle + '_' + name,
             language: 'Chinese',
             use_raptor: false,
             extract_metadata: false,
