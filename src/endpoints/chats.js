@@ -1016,8 +1016,21 @@ router.get('/list', async function (request, response) {
             const files = fs.readdirSync(characterPath);
             const jsonlFiles = files.filter(file => path.extname(file) === '.jsonl');
 
+            let latestFile = null;
+            let latestTime = 0;
+
             for (const file of jsonlFiles) {
                 const pathToFile = path.join(characterPath, file);
+                const stats = fs.statSync(pathToFile);
+                const fileTime = stats.ctime.getTime();
+                if (fileTime > latestTime) {
+                    latestTime = fileTime;
+                    latestFile = file;
+                }
+            }
+
+            if (latestFile) {
+                const pathToFile = path.join(characterPath, latestFile);
                 const stats = fs.statSync(pathToFile);
                 const chatInfo = await getChatInfo(pathToFile, { character: characterDir });
                 if (chatInfo.file_name) {
