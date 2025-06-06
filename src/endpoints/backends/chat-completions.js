@@ -2,6 +2,7 @@ import process from 'node:process';
 import util from 'node:util';
 import express from 'express';
 import fetch from 'node-fetch';
+import sanitize from 'sanitize-filename';
 
 import {
     CHAT_COMPLETION_SOURCES,
@@ -141,10 +142,11 @@ async function addMemoryToMessages(request, messages) {
     let kbId = '';
     try {
         const characterDir = request.body.char_name;
+        const fileName = `${String(request.body.file_name)}.jsonl`;
         const filePath = path.join(
             request.user.directories.chats,
             characterDir,
-            request.body.file_name,
+            sanitize(fileName),
         );
 
         const firstLine = await readFirstLine(filePath);

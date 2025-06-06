@@ -2120,7 +2120,7 @@ async function sendOpenAIRequest(type, messages, signal, chat_id = '') {
         'enable_web_search': Boolean(oai_settings.enable_web_search),
         'request_images': Boolean(oai_settings.request_images),
         'custom_prompt_post_processing': oai_settings.custom_prompt_post_processing,
-        'file_name': chat_id + '.jsonl',
+        'file_name': chat_id,
     };
 
     if (!canMultiSwipe && ToolManager.canPerformToolCalls(type)) {
