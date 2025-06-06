@@ -2037,7 +2037,7 @@ function getReasoningEffort() {
  * @throws {Error}
  */
 
-async function sendOpenAIRequest(type, messages, signal, leaprag_kb_id = '') {
+async function sendOpenAIRequest(type, messages, signal, chat_id = '') {
     // Provide default abort signal
     if (!signal) {
         signal = new AbortController().signal;
@@ -2120,7 +2120,7 @@ async function sendOpenAIRequest(type, messages, signal, leaprag_kb_id = '') {
         'enable_web_search': Boolean(oai_settings.enable_web_search),
         'request_images': Boolean(oai_settings.request_images),
         'custom_prompt_post_processing': oai_settings.custom_prompt_post_processing,
-        'leaprag_kb_id': leaprag_kb_id,
+        'file_name': chat_id + '.jsonl',
     };
 
     if (!canMultiSwipe && ToolManager.canPerformToolCalls(type)) {

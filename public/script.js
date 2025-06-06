@@ -5870,7 +5870,7 @@ function setInContextMessages(msgInContextCount, type) {
  */
 export async function sendGenerationRequest(type, data) {
     if (main_api === 'openai') {
-        return await sendOpenAIRequest(type, data.prompt, abortController.signal, data.leaprag_kb_id);
+        return await sendOpenAIRequest(type, data.prompt, abortController.signal, getCurrentChatId());
     }
 
     if (main_api === 'koboldhorde') {
@@ -5904,7 +5904,7 @@ export async function sendStreamingRequest(type, data) {
 
     switch (main_api) {
         case 'openai':
-            return await sendOpenAIRequest(type, data.prompt, streamingProcessor.abortController.signal, data.leaprag_kb_id);
+            return await sendOpenAIRequest(type, data.prompt, streamingProcessor.abortController.signal, getCurrentChatId());
         case 'textgenerationwebui':
             return await generateTextGenWithStreaming(data, streamingProcessor.abortController.signal);
         case 'novel':
