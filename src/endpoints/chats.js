@@ -7,7 +7,7 @@ import express from 'express';
 import sanitize from 'sanitize-filename';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import _ from 'lodash';
-import { createKnowledge, uploadChatContent } from './leaprag.js';
+import { createKnowledge, uploadChatContent, isLeapRagEnabled } from './leaprag.js';
 
 import validateAvatarUrlMiddleware from '../middleware/validateFileName.js';
 import {
@@ -299,7 +299,7 @@ function importRisuChat(userName, characterName, jsonData) {
  * @param {string} filePath Path to the file
  * @returns {Promise<string>} The first line of the file
  */
-function readFirstLine(filePath) {
+export function readFirstLine(filePath) {
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream });
     return new Promise((resolve, reject) => {
@@ -436,7 +436,8 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
 
         const kbId = chatData[0].chat_metadata.leaprag_kb_id ?? '';
         const shouldCreateKB = request.body.create_kb;
-        const shouldUseRAG = chatData[0].chat_metadata.use_leaprag;
+        const shouldUseRAG = chatData[0].chat_metadata.use_leaprag && isLeapRagEnabled(request.user.profile);
+
         if (kbId && shouldUseRAG) {
             if (shouldCreateKB) {
                 await createKnowledge(request.user.profile, fileName, kbId);

@@ -43,7 +43,9 @@ import {
     webTokenizers,
     getWebTokenizer,
 } from '../tokenizers.js';
-import { retrievalMemories } from '../leaprag.js';
+import { retrievalMemories, isLeapRagEnabled } from '../leaprag.js';
+import path from 'node:path';
+import { readFirstLine } from '../chats.js';
 
 const API_OPENAI = 'https://api.openai.com/v1';
 const API_CLAUDE = 'https://api.anthropic.com/v1';
@@ -127,7 +129,41 @@ function getOpenRouterPlugins(request) {
  * @returns {Promise<object[]>} Processed messages array
  */
 async function addMemoryToMessages(request, messages) {
-    if (!request.body.leaprag_kb_id && (!Array.isArray(messages) || messages.length === 0)) {
+    if (!Array.isArray(messages) || messages.length === 0) {
+        return messages;
+    }
+
+    // Check LeapRAG configuration first
+    if (!isLeapRagEnabled(request.user.profile)) {
+        return messages;
+    }
+
+    let kbId = '';
+    try {
+        const characterDir = request.body.char_name;
+        const filePath = path.join(
+            request.user.directories.chats,
+            characterDir,
+            request.body.file_name,
+        );
+
+        const firstLine = await readFirstLine(filePath);
+        if (firstLine) {
+            const firstLineData = tryParse(firstLine);
+            if (firstLineData?.chat_metadata?.leaprag_kb_id && firstLineData?.chat_metadata?.use_leaprag) {
+                kbId = firstLineData.chat_metadata.leaprag_kb_id;
+                console.info('📚 LeapRAG Status: Enabled');
+                console.info(`   └─ Knowledge ID: ${kbId}`);
+            } else {
+                console.info('📚 LeapRAG Status: Disabled');
+            }
+        }
+    } catch (error) {
+        console.error('Error reading chat file:', error);
+        return messages;
+    }
+
+    if (!kbId) {
         return messages;
     }
 
@@ -185,7 +221,7 @@ async function addMemoryToMessages(request, messages) {
         if (question) {
             const memoryContent = await retrievalMemories(request.user.profile, {
                 question: question,
-                kb_ids: [request.body.leaprag_kb_id],
+                kb_ids: [kbId],
             });
 
             if (memoryContent) {

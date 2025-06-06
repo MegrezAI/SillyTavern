@@ -1,4 +1,6 @@
-
+export function isLeapRagEnabled(user_profile = {}) {
+    return !!(user_profile?.leaprag_apikey && user_profile?.leaprag_api_url);
+}
 
 function getLeapRagConfig(user_profile) {
     console.info({ user_profile });
