@@ -102,6 +102,7 @@ export async function retrievalMemories(user_profile, {
 
         const data = await response.json();
         if (!data.chunks || !Array.isArray(data.chunks) || !data.chunks.length) {
+            console.info('📚 LeapRAG: No memories found (no matching content)');
             return '';
         }
         // console.log('found chunk:', data.chunks);
