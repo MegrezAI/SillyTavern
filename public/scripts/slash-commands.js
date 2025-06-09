@@ -3881,6 +3881,7 @@ export async function sendMessageAs(args, text) {
         is_user: false,
         is_system: isSystem,
         send_date: getMessageTimeStamp(),
+        sent_at: Date.now(),
         mes: substituteParams(mesText),
         force_avatar: force_avatar,
         original_avatar: original_avatar,
@@ -3946,6 +3947,7 @@ export async function sendNarratorMessage(args, text) {
         is_user: false,
         is_system: isSystem,
         send_date: getMessageTimeStamp(),
+        sent_at: Date.now(),
         mes: substituteParams(text.trim()),
         force_avatar: system_avatar,
         extra: {
@@ -4007,6 +4009,7 @@ export async function promptQuietForLoudResponse(who, text) {
         is_name: true,
         is_system: false,
         send_date: getMessageTimeStamp(),
+        sent_at: Date.now(),
         mes: substituteParams(text.trim()),
         extra: {
             type: system_message_types.COMMENT,
@@ -4031,6 +4034,7 @@ async function sendCommentMessage(args, text) {
         is_user: false,
         is_system: true,
         send_date: getMessageTimeStamp(),
+        sent_at: Date.now(),
         mes: substituteParams(String(text ?? '').trim()),
         force_avatar: comment_avatar,
         extra: {
