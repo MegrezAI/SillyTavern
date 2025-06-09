@@ -5461,6 +5461,7 @@ export async function sendMessageAsUser(messageText, messageBias, insertAt = nul
         is_user: true,
         is_system: false,
         send_date: getMessageTimeStamp(),
+        sent_at: Date.now(),
         mes: substituteParams(messageText),
         extra: {
             isSmallSys: compact,
@@ -6347,6 +6348,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
             chat[chat.length - 1]['gen_started'] = generation_started;
             chat[chat.length - 1]['gen_finished'] = generationFinished;
             chat[chat.length - 1]['send_date'] = getMessageTimeStamp();
+            chat[chat.length - 1]['send_at'] = Date.now();
             chat[chat.length - 1]['extra']['api'] = getGeneratingApi();
             chat[chat.length - 1]['extra']['model'] = getGeneratingModel();
             chat[chat.length - 1]['extra']['reasoning'] = reasoning;
@@ -6371,6 +6373,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         chat[chat.length - 1]['gen_started'] = generation_started;
         chat[chat.length - 1]['gen_finished'] = generationFinished;
         chat[chat.length - 1]['send_date'] = getMessageTimeStamp();
+        chat[chat.length - 1]['send_at'] = Date.now();
         chat[chat.length - 1]['extra']['api'] = getGeneratingApi();
         chat[chat.length - 1]['extra']['model'] = getGeneratingModel();
         chat[chat.length - 1]['extra']['reasoning'] = reasoning;
@@ -6392,6 +6395,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         chat[chat.length - 1]['gen_started'] = generation_started;
         chat[chat.length - 1]['gen_finished'] = generationFinished;
         chat[chat.length - 1]['send_date'] = getMessageTimeStamp();
+        chat[chat.length - 1]['send_at'] = Date.now();
         chat[chat.length - 1]['extra']['api'] = getGeneratingApi();
         chat[chat.length - 1]['extra']['model'] = getGeneratingModel();
         chat[chat.length - 1]['extra']['reasoning'] += reasoning;
@@ -6413,6 +6417,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         chat[chat.length - 1]['name'] = name2;
         chat[chat.length - 1]['is_user'] = false;
         chat[chat.length - 1]['send_date'] = getMessageTimeStamp();
+        chat[chat.length - 1]['send_at'] = Date.now();
         chat[chat.length - 1]['extra']['api'] = getGeneratingApi();
         chat[chat.length - 1]['extra']['model'] = getGeneratingModel();
         chat[chat.length - 1]['extra']['reasoning'] = reasoning;
