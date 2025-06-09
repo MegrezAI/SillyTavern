@@ -2931,7 +2931,7 @@ export function getSystemMessageByType(type, text, extra = {}) {
         return;
     }
 
-    const newMessage = { ...systemMessage, send_date: getMessageTimeStamp() };
+    const newMessage = { ...systemMessage, send_date: getMessageTimeStamp(), sent_at: Date.now() };
 
     if (text) {
         newMessage.mes = text;
@@ -7311,6 +7311,7 @@ function getFirstMessage() {
         is_user: false,
         is_system: false,
         send_date: getMessageTimeStamp(),
+        sent_at: Date.now(),
         mes: getRegexedString(firstMes, regex_placement.AI_OUTPUT),
         extra: {},
     };

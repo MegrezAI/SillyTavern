@@ -162,6 +162,7 @@ async function sendCaptionedMessage(caption, image) {
         name: context.name1,
         is_user: true,
         send_date: getMessageTimeStamp(),
+        sent_at: Date.now(),
         mes: messageText,
         extra: {
             image: image,

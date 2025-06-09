@@ -3731,6 +3731,7 @@ async function sendMessage(prompt, image, generationType, additionalNegativePref
         is_user: false,
         is_system: !getVisibilityByInitiator(initiator),
         send_date: getMessageTimeStamp(),
+        sent_at: Date.now(),
         mes: messageText,
         extra: {
             image: image,

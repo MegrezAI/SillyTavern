@@ -546,6 +546,7 @@ async function getFirstCharacterMessage(character) {
     mes['is_system'] = false;
     mes['name'] = character.name;
     mes['send_date'] = getMessageTimeStamp();
+    mes['sent_at'] = Date.now();
     mes['original_avatar'] = character.avatar;
     mes['extra'] = { 'gen_id': Date.now() * Math.random() * 1000000 };
     mes['mes'] = messageText
