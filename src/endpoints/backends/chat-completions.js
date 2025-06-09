@@ -3,9 +3,18 @@ import util from 'node:util';
 import express from 'express';
 import fetch from 'node-fetch';
 import sanitize from 'sanitize-filename';
+import fs from 'node:fs';
+import {
+    buildFullRequestBody,
+    loadUserSettings,
+    loadCharacterData,
+    loadChatHistory,
+    getMessageTimeStamp,
+} from '../../chat-util.js';
 
 import {
     CHAT_COMPLETION_SOURCES,
+    DEFAULT_USER,
     GEMINI_SAFETY,
     OPENROUTER_HEADERS,
 } from '../../constants.js';
@@ -47,6 +56,8 @@ import {
 import { retrievalMemories, isLeapRagEnabled } from '../leaprag.js';
 import path from 'node:path';
 import { readFirstLine } from '../chats.js';
+import { getUserDirectories } from '../../users.js';
+import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 const API_OPENAI = 'https://api.openai.com/v1';
 const API_CLAUDE = 'https://api.anthropic.com/v1';
@@ -1617,3 +1628,547 @@ router.post('/generate', function (request, response) {
         }
     }
 });
+
+
+router.post('/generate-simple', async function (request, response) {
+    if (!request.body) return response.status(400).send({ error: true });
+
+    // Check if this is a simplified request (char_name, file_name, messages, stream)
+    const { char_name, file_name, messages, stream = false } = request.body;
+
+    let simpleRequestData = null; // Store for later use in saving
+
+    if (char_name && file_name && Array.isArray(messages)) {
+        try {
+            // Get DEFAULT_USER's configuration
+            const handle = DEFAULT_USER.handle;
+            const defaultDirectories = getUserDirectories(handle);
+            const defaultSettings = loadUserSettings(defaultDirectories);
+
+            console.log('DEBUG: Default user settings loaded');
+            console.log('DEBUG: main_api =', defaultSettings.main_api);
+            console.log('DEBUG: chat_completion_source =', defaultSettings.oai_settings?.chat_completion_source);
+
+            // Load character data from current user's directories
+            const characterData = await loadCharacterData(request.user.directories, char_name);
+            if (!characterData) {
+                return response.status(404).send({ error: 'Character not found' });
+            }
+
+            // Load chat history from current user's directories
+            const chatHistory = await loadChatHistory(request.user.directories, characterData.avatar, file_name);
+
+            // Try to get existing chat metadata from the first line of the chat file
+            let existingChatMetadata = null;
+            try {
+                const chatFilePath = path.join(
+                    request.user.directories.chats,
+                    characterData.name,
+                    sanitize(`${file_name}.jsonl`),
+                );
+                if (fs.existsSync(chatFilePath)) {
+                    const firstLine = await readFirstLine(chatFilePath);
+                    if (firstLine) {
+                        const parsed = tryParse(firstLine);
+                        if (parsed && (parsed.chat_metadata || parsed.user_name)) {
+                            existingChatMetadata = parsed;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('[SIMPLE] Could not read existing chat metadata:', error);
+            }
+
+            // Store simple request data for later use
+            simpleRequestData = {
+                char_name,
+                file_name,
+                characterData,
+                userMessages: messages,
+                chatHistory,
+                userDirectories: request.user.directories,
+                existingChatMetadata,
+            };
+
+            // Build complete request body using DEFAULT_USER's settings
+            const fullRequestBody = buildFullRequestBody({
+                characterData,
+                messages: [...chatHistory, ...messages],
+                stream,
+                userSettings: defaultSettings,
+            });
+
+            console.log('DEBUG: Built full request body with chat_completion_source =', fullRequestBody.chat_completion_source);
+
+            // Replace request body with the full request
+            request.body = fullRequestBody;
+
+        } catch (error) {
+            console.error('Simple request conversion error:', error);
+            return response.status(500).send({ error: error.message });
+        }
+    }
+
+    const postProcessingType = request.body.custom_prompt_post_processing;
+    if (Array.isArray(request.body.messages) && postProcessingType) {
+        console.info('Applying custom prompt post-processing of type', postProcessingType);
+        request.body.messages = postProcessPrompt(
+            request.body.messages,
+            postProcessingType,
+            getPromptNames(request));
+    }
+
+    console.log('DEBUG: chat_completion_source =', request.body.chat_completion_source);
+    console.log('DEBUG: CHAT_COMPLETION_SOURCES.DEEPSEEK =', CHAT_COMPLETION_SOURCES.DEEPSEEK);
+    console.log('DEBUG: comparison result =', request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.DEEPSEEK);
+    console.log('DEBUG: full request body =', JSON.stringify(request.body, null, 2));
+
+    // If this is a simple request, set up auto-save after response
+    if (simpleRequestData) {
+        setupAutoSaveAfterResponse(response, simpleRequestData, request.body);
+    }
+
+    switch (request.body.chat_completion_source) {
+        case CHAT_COMPLETION_SOURCES.CLAUDE: return sendClaudeRequest(request, response);
+        case CHAT_COMPLETION_SOURCES.SCALE: return sendScaleRequest(request, response);
+        case CHAT_COMPLETION_SOURCES.AI21: return sendAI21Request(request, response);
+        case CHAT_COMPLETION_SOURCES.MAKERSUITE: return sendMakerSuiteRequest(request, response);
+        case CHAT_COMPLETION_SOURCES.VERTEXAI: return sendMakerSuiteRequest(request, response);
+        case CHAT_COMPLETION_SOURCES.MISTRALAI: return sendMistralAIRequest(request, response);
+        case CHAT_COMPLETION_SOURCES.COHERE: return sendCohereRequest(request, response);
+        case CHAT_COMPLETION_SOURCES.DEEPSEEK: return sendDeepSeekRequest(request, response);
+        case CHAT_COMPLETION_SOURCES.XAI: return sendXaiRequest(request, response);
+    }
+
+    // Continue with the rest of the original /generate logic for other sources...
+    let apiUrl;
+    let apiKey;
+    let headers;
+    let bodyParams;
+    const isTextCompletion = Boolean(request.body.model && TEXT_COMPLETION_MODELS.includes(request.body.model)) || typeof request.body.messages === 'string';
+
+    if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENAI) {
+        apiUrl = new URL(request.body.reverse_proxy || API_OPENAI).toString();
+        apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.OPENAI);
+        headers = {};
+        bodyParams = {
+            logprobs: request.body.logprobs,
+            top_logprobs: undefined,
+        };
+
+        // Adjust logprobs params for Chat Completions API, which expects { top_logprobs: number; logprobs: boolean; }
+        if (!isTextCompletion && bodyParams.logprobs > 0) {
+            bodyParams.top_logprobs = bodyParams.logprobs;
+            bodyParams.logprobs = true;
+        }
+
+        if (getConfigValue('openai.randomizeUserId', false, 'boolean')) {
+            bodyParams['user'] = uuidv4();
+        }
+    } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENROUTER) {
+        apiUrl = 'https://openrouter.ai/api/v1';
+        apiKey = readSecret(request.user.directories, SECRET_KEYS.OPENROUTER);
+        // OpenRouter needs to pass the Referer and X-Title: https://openrouter.ai/docs#requests
+        headers = { ...OPENROUTER_HEADERS };
+        bodyParams = {
+            'transforms': getOpenRouterTransforms(request),
+            'plugins': getOpenRouterPlugins(request),
+            'include_reasoning': Boolean(request.body.include_reasoning),
+        };
+
+        if (request.body.min_p !== undefined) {
+            bodyParams['min_p'] = request.body.min_p;
+        }
+
+        if (request.body.top_a !== undefined) {
+            bodyParams['top_a'] = request.body.top_a;
+        }
+
+        if (request.body.repetition_penalty !== undefined) {
+            bodyParams['repetition_penalty'] = request.body.repetition_penalty;
+        }
+
+        if (Array.isArray(request.body.provider) && request.body.provider.length > 0) {
+            bodyParams['provider'] = {
+                allow_fallbacks: request.body.allow_fallbacks ?? true,
+                order: request.body.provider ?? [],
+            };
+        }
+
+        if (request.body.use_fallback) {
+            bodyParams['route'] = 'fallback';
+        }
+
+        if (request.body.reasoning_effort) {
+            bodyParams['reasoning'] = { effort: request.body.reasoning_effort };
+        }
+
+        let cachingAtDepth = getConfigValue('claude.cachingAtDepth', -1, 'number');
+        const isClaude3or4 = /anthropic\/claude-(3|opus-4|sonnet-4)/.test(request.body.model);
+        if (Number.isInteger(cachingAtDepth) && cachingAtDepth >= 0 && isClaude3or4) {
+            cachingAtDepthForOpenRouterClaude(request.body.messages, cachingAtDepth);
+        }
+    } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {
+        apiUrl = request.body.custom_url;
+        apiKey = readSecret(request.user.directories, SECRET_KEYS.CUSTOM);
+        headers = {};
+        bodyParams = {
+            logprobs: request.body.logprobs,
+            top_logprobs: undefined,
+        };
+
+        // Adjust logprobs params for Chat Completions API, which expects { top_logprobs: number; logprobs: boolean; }
+        if (!isTextCompletion && bodyParams.logprobs > 0) {
+            bodyParams.top_logprobs = bodyParams.logprobs;
+            bodyParams.logprobs = true;
+        }
+
+        mergeObjectWithYaml(bodyParams, request.body.custom_include_body);
+        mergeObjectWithYaml(headers, request.body.custom_include_headers);
+    } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.PERPLEXITY) {
+        apiUrl = API_PERPLEXITY;
+        apiKey = readSecret(request.user.directories, SECRET_KEYS.PERPLEXITY);
+        headers = {};
+        bodyParams = {};
+        request.body.messages = postProcessPrompt(request.body.messages, 'strict', getPromptNames(request));
+    } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.GROQ) {
+        apiUrl = API_GROQ;
+        apiKey = readSecret(request.user.directories, SECRET_KEYS.GROQ);
+        headers = {};
+        bodyParams = {};
+    } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.NANOGPT) {
+        apiUrl = API_NANOGPT;
+        apiKey = readSecret(request.user.directories, SECRET_KEYS.NANOGPT);
+        headers = {};
+        bodyParams = {};
+    } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.ZEROONEAI) {
+        apiUrl = API_01AI;
+        apiKey = readSecret(request.user.directories, SECRET_KEYS.ZEROONEAI);
+        headers = {};
+        bodyParams = {};
+    } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.POLLINATIONS) {
+        apiUrl = API_POLLINATIONS;
+        apiKey = 'NONE';
+        headers = {
+            'Authorization': '',
+        };
+        bodyParams = {
+            reasoning_effort: request.body.reasoning_effort,
+            private: true,
+            referrer: 'sillytavern',
+            seed: request.body.seed ?? Math.floor(Math.random() * 99999999),
+        };
+    } else {
+        console.warn('This chat completion source is not supported yet.');
+        return response.status(400).send({ error: true });
+    }
+
+    // A few of OpenAIs reasoning models support reasoning effort
+    if (request.body.reasoning_effort && [CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.OPENAI].includes(request.body.chat_completion_source)) {
+        if (['o1', 'o3-mini', 'o3-mini-2025-01-31', 'o4-mini', 'o4-mini-2025-04-16', 'o3', 'o3-2025-04-16'].includes(request.body.model)) {
+            bodyParams['reasoning_effort'] = request.body.reasoning_effort;
+        }
+    }
+
+    // Check for API key only for sources that require it and aren't handled by special functions
+    const sourcesWithSpecialHandlers = [
+        CHAT_COMPLETION_SOURCES.CLAUDE,
+        CHAT_COMPLETION_SOURCES.SCALE,
+        CHAT_COMPLETION_SOURCES.AI21,
+        CHAT_COMPLETION_SOURCES.MAKERSUITE,
+        CHAT_COMPLETION_SOURCES.VERTEXAI,
+        CHAT_COMPLETION_SOURCES.MISTRALAI,
+        CHAT_COMPLETION_SOURCES.COHERE,
+        CHAT_COMPLETION_SOURCES.DEEPSEEK,
+        CHAT_COMPLETION_SOURCES.XAI,
+        CHAT_COMPLETION_SOURCES.CUSTOM,
+        CHAT_COMPLETION_SOURCES.POLLINATIONS,
+    ];
+
+    if (!apiKey && !request.body.reverse_proxy && !sourcesWithSpecialHandlers.includes(request.body.chat_completion_source)) {
+        console.warn('API key is missing for completion source:', request.body.chat_completion_source);
+        return response.status(400).send({ error: true });
+    }
+
+    // Add custom stop sequences
+    if (Array.isArray(request.body.stop) && request.body.stop.length > 0) {
+        bodyParams['stop'] = request.body.stop;
+    }
+
+    const textPrompt = isTextCompletion ? convertTextCompletionPrompt(request.body.messages) : '';
+    const endpointUrl = isTextCompletion && request.body.chat_completion_source !== CHAT_COMPLETION_SOURCES.OPENROUTER ?
+        `${apiUrl}/completions` :
+        `${apiUrl}/chat/completions`;
+
+    const controller = new AbortController();
+    request.socket.removeAllListeners('close');
+    request.socket.on('close', function () {
+        controller.abort();
+    });
+
+    if (!isTextCompletion && Array.isArray(request.body.tools) && request.body.tools.length > 0) {
+        bodyParams['tools'] = request.body.tools;
+        bodyParams['tool_choice'] = request.body.tool_choice;
+    }
+
+    const requestBody = {
+        'messages': isTextCompletion === false ? request.body.messages : undefined,
+        'prompt': isTextCompletion === true ? textPrompt : undefined,
+        'model': request.body.model,
+        'temperature': request.body.temperature,
+        'max_tokens': request.body.max_tokens,
+        'max_completion_tokens': request.body.max_completion_tokens,
+        'stream': request.body.stream,
+        'presence_penalty': request.body.presence_penalty,
+        'frequency_penalty': request.body.frequency_penalty,
+        'top_p': request.body.top_p,
+        'top_k': request.body.top_k,
+        'stop': isTextCompletion === false ? request.body.stop : undefined,
+        'logit_bias': request.body.logit_bias,
+        'seed': request.body.seed,
+        'n': request.body.n,
+        ...bodyParams,
+    };
+
+    if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {
+        excludeKeysByYaml(requestBody, request.body.custom_exclude_body);
+    }
+
+    /** @type {import('node-fetch').RequestInit} */
+    const config = {
+        method: 'post',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + apiKey,
+            ...headers,
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+    };
+
+    console.debug(requestBody);
+
+    makeRequest(config, response, request);
+
+    /**
+     * Makes a fetch request to the OpenAI API endpoint.
+     * @param {import('node-fetch').RequestInit} config Fetch config
+     * @param {express.Response} response Express response
+     * @param {express.Request} request Express request
+     * @param {Number} retries Number of retries left
+     * @param {Number} timeout Request timeout in ms
+     */
+    async function makeRequest(config, response, request, retries = 5, timeout = 5000) {
+        try {
+            controller.signal.throwIfAborted();
+            const fetchResponse = await fetch(endpointUrl, config);
+
+            if (request.body.stream) {
+                console.info('Streaming request in progress');
+                forwardFetchResponse(fetchResponse, response);
+                return;
+            }
+
+            if (fetchResponse.ok) {
+                /** @type {any} */
+                let json = await fetchResponse.json();
+                response.send(json);
+                console.debug(json);
+                console.debug(json?.choices?.[0]?.message);
+            } else if (fetchResponse.status === 429 && retries > 0) {
+                console.warn(`Out of quota, retrying in ${Math.round(timeout / 1000)}s`);
+                setTimeout(() => {
+                    timeout *= 2;
+                    makeRequest(config, response, request, retries - 1, timeout);
+                }, timeout);
+            } else {
+                await handleErrorResponse(fetchResponse);
+            }
+        } catch (error) {
+            console.error('Generation failed', error);
+            const message = error.code === 'ECONNREFUSED'
+                ? `Connection refused: ${error.message}`
+                : error.message || 'Unknown error occurred';
+
+            if (!response.headersSent) {
+                response.status(502).send({ error: { message, ...error } });
+            } else {
+                response.end();
+            }
+        }
+    }
+
+    /**
+     * @param {import("node-fetch").Response} errorResponse
+     */
+    async function handleErrorResponse(errorResponse) {
+        const responseText = await errorResponse.text();
+        const errorData = tryParse(responseText);
+
+        const message = errorResponse.statusText || 'Unknown error occurred';
+        const quota_error = errorResponse.status === 429 && errorData?.error?.type === 'insufficient_quota';
+        console.error('Chat completion request error: ', message, responseText);
+
+        if (!response.headersSent) {
+            response.send({ error: { message }, quota_error: quota_error });
+        } else if (!response.writableEnded) {
+            response.write(errorResponse);
+        } else {
+            response.end();
+        }
+    }
+
+    function setupAutoSaveAfterResponse(response, simpleRequestData, requestBody) {
+        let collectedContent = '';
+
+        if (requestBody.stream) {
+            // Handle streaming response - override write method
+            const originalWrite = response.write;
+            response.write = function (chunk) {
+                if (chunk) {
+                    // Parse SSE data to extract content
+                    const chunkStr = chunk.toString();
+                    const lines = chunkStr.split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('data: ') && !line.includes('[DONE]')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+
+                                // Handle OpenAI-like format (most APIs)
+                                if (data.choices?.[0]?.delta?.content) {
+                                    collectedContent += data.choices[0].delta.content;
+                                }
+                                // Handle Google AI/Gemini format
+                                else if (data.candidates?.[0]?.content?.parts) {
+                                    for (const part of data.candidates[0].content.parts) {
+                                        if (part.text) {
+                                            collectedContent += part.text;
+                                        }
+                                    }
+                                }
+                                // Handle other potential formats
+                                else if (data.content) {
+                                    collectedContent += data.content;
+                                }
+                                else if (data.text) {
+                                    collectedContent += data.text;
+                                }
+                            } catch (e) {
+                                // Ignore parsing errors
+                            }
+                        }
+                    }
+                }
+                return originalWrite.call(this, chunk);
+            };
+        } else {
+            // Handle non-streaming response - override send method
+            const originalSend = response.send;
+            response.send = function (data) {
+                try {
+                    // Parse the complete response to extract AI content
+                    let responseData = data;
+                    if (typeof data === 'string') {
+                        responseData = JSON.parse(data);
+                    }
+
+                    // Handle OpenAI-like format
+                    if (responseData.choices?.[0]?.message?.content) {
+                        collectedContent = responseData.choices[0].message.content;
+                    }
+                    // Handle Google AI/Gemini format
+                    else if (responseData.responseContent?.parts) {
+                        collectedContent = responseData.responseContent.parts
+                            .filter(part => !part.thought)
+                            .map(part => part.text)
+                            .join('\n\n');
+                    }
+                    // Handle other potential formats
+                    else if (responseData.content) {
+                        collectedContent = responseData.content;
+                    }
+                } catch (e) {
+                    console.warn('[SIMPLE] Failed to parse non-streaming response:', e);
+                }
+                return originalSend.call(this, data);
+            };
+        }
+
+        // Listen for response finish to save chat data
+        response.on('finish', async () => {
+            try {
+                if (collectedContent.trim()) {
+                    // Build updated chat data
+                    const currentTime = Date.now();
+                    const timeString = getMessageTimeStamp();
+
+                    // Get the actual username
+                    const actualUserName = simpleRequestData.existingChatMetadata?.user_name;
+
+
+                    const updatedChatData = [
+                        // Add metadata line (required by SillyTavern format)
+                        simpleRequestData.existingChatMetadata || {
+                            user_name: actualUserName,
+                            character_name: simpleRequestData.characterData.name,
+                            create_date: simpleRequestData.file_name,
+                            chat_metadata: {},
+                        },
+                        // Add existing chat history
+                        ...simpleRequestData.chatHistory,
+                        // Add user messages
+                        ...simpleRequestData.userMessages.map(msg => ({
+                            name: actualUserName,  // Use actual username instead of hardcoded 'User'
+                            is_user: true,
+                            mes: msg.content || msg.mes || '',
+                            send_date: timeString,
+                            sent_at: currentTime,
+                        })),
+                        // Add AI response
+                        {
+                            name: simpleRequestData.characterData.name,
+                            is_user: false,
+                            mes: collectedContent,
+                            send_date: timeString,
+                            sent_at: currentTime,
+                            extra: {},
+                        },
+                    ];
+
+                    await saveChatData(simpleRequestData, updatedChatData);
+                }
+            } catch (error) {
+                console.error('[SIMPLE] Error in auto-save:', error);
+            }
+        });
+    }
+
+    async function saveChatData(simpleRequestData, chatData) {
+        try {
+            const directoryName = simpleRequestData.characterData.name;
+            const filePath = path.join(simpleRequestData.userDirectories.chats, directoryName, `${simpleRequestData.file_name}.jsonl`);
+
+            // Ensure directory exists
+            const dirPath = path.join(simpleRequestData.userDirectories.chats, directoryName);
+            if (!fs.existsSync(dirPath)) {
+                fs.mkdirSync(dirPath, { recursive: true });
+            }
+
+            const jsonlData = chatData.map(item => JSON.stringify(item)).join('\n');
+
+            // Write chat data
+            writeFileAtomicSync(filePath, jsonlData, 'utf8');
+            console.log(`[SIMPLE] Chat saved: ${filePath}`);
+        } catch (error) {
+            console.error('[SIMPLE] Failed to save chat data:', error);
+        }
+    }
+});
+
+
+
+
+
+
+
+
