@@ -1694,7 +1694,7 @@ router.post('/generate-simple', async function (request, response) {
             char_name,
             file_name,
             characterData,
-            userMessages: messages,
+            userMessage: messages[0], // Only take the first message because there will only ever be one
             chatHistory,
             userDirectories: request.user.directories,
             existingChatMetadata,
@@ -2201,13 +2201,15 @@ router.post('/generate-simple', async function (request, response) {
                             chat_metadata: {},
                         },
                         ...simpleRequestData.chatHistory,
-                        ...simpleRequestData.userMessages.map(msg => ({
+                        // user message（Only one）
+                        {
                             name: actualUserName,
                             is_user: true,
-                            mes: msg.content || msg.mes || '',
+                            mes: simpleRequestData.userMessage.content || simpleRequestData.userMessage.mes || '',
                             send_date: timeString,
                             sent_at: currentTime,
-                        })),
+                        },
+                        // llm response
                         {
                             name: simpleRequestData.characterData.name,
                             is_user: false,
