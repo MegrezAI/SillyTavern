@@ -10,20 +10,12 @@ import { readCharacterData } from './endpoints/characters.js';
  * @param {object[]} params.messages Messages array
  * @param {boolean} params.stream Whether to stream
  * @param {object} params.userSettings Complete user settings
+ * @param {object} params.extensionPrompts Extension prompts object
  * @returns {object} Complete request body
  */
-export function buildFullRequestBody({ characterData, messages, stream, userSettings }) {
+export function buildFullRequestBody({ characterData, messages, stream, userSettings, extensionPrompts = {} }) {
     // Convert ST messages to OpenAI format
     const openaiMessages = [];
-
-    // Add system prompt
-    const systemPrompt = buildSystemPrompt(characterData, userSettings);
-    if (systemPrompt) {
-        openaiMessages.push({
-            role: 'system',
-            content: systemPrompt,
-        });
-    }
 
     // Convert messages to OpenAI format
     for (const msg of messages) {
@@ -64,6 +56,71 @@ export function buildFullRequestBody({ characterData, messages, stream, userSett
     const chatCompletionSource = oaiSettings.chat_completion_source;
     const model = getChatCompletionModel(chatCompletionSource, oaiSettings);
 
+    // For Google AI, we need to keep system prompts separate so they become individual parts
+    // For other APIs, we can merge them
+    const isGoogleAI = chatCompletionSource === 'makersuite' || chatCompletionSource === 'vertexai';
+
+    if (isGoogleAI) {
+        // Insert individual system prompt components as separate messages at the beginning
+        const systemMessages = [];
+
+        // Main system prompt
+        const mainPrompt = oaiSettings.prompts?.find(p => p.identifier === 'main')?.content ||
+            `Write ${characterData.name}'s next reply in a fictional chat between ${characterData.name} and ${userSettings.username}.`;
+
+        systemMessages.push({
+            role: 'system',
+            content: substituteMacros(mainPrompt, userSettings.username || 'User', characterData.name, characterData, userSettings),
+        });
+
+        // Character description
+        if (characterData.description) {
+            systemMessages.push({
+                role: 'system',
+                content: substituteMacros(characterData.description, userSettings.username || 'User', characterData.name, characterData, userSettings),
+            });
+        }
+
+        // Character personality
+        if (characterData.personality) {
+            systemMessages.push({
+                role: 'system',
+                content: `Personality: ${substituteMacros(characterData.personality, userSettings.username || 'User', characterData.name, characterData, userSettings)}`,
+            });
+        }
+
+        // New chat separator
+        systemMessages.push({
+            role: 'system',
+            content: '[Start a new Chat]',
+        });
+
+        // Insert at the beginning
+        openaiMessages.unshift(...systemMessages);
+    } else {
+        // For non-Google AI, use the merged system prompt
+        const systemPrompt = buildSystemPrompt(characterData, userSettings);
+        if (systemPrompt) {
+            openaiMessages.unshift({
+                role: 'system',
+                content: systemPrompt,
+            });
+        }
+    }
+
+    // Add extension prompts to the request
+    const requestExtensionPrompts = {};
+    for (const [key, prompt] of Object.entries(extensionPrompts)) {
+        if (prompt?.value) {
+            requestExtensionPrompts[key] = {
+                value: prompt.value,
+                position: prompt.position || 0,
+                depth: prompt.depth || 0,
+                role: prompt.role || 0,
+            };
+        }
+    }
+
     return {
         messages: openaiMessages,
         model: model,
@@ -81,8 +138,10 @@ export function buildFullRequestBody({ characterData, messages, stream, userSett
         reasoning_effort: oaiSettings.reasoning_effort || 'auto',
         enable_web_search: oaiSettings.enable_web_search || false,
         request_images: oaiSettings.request_images || false,
+        use_makersuite_sysprompt: oaiSettings.use_makersuite_sysprompt !== false, // Add Google AI system prompt setting
         custom_prompt_post_processing: oaiSettings.custom_prompt_post_processing || '',
         file_name: '', // Will be set by caller if needed
+        extension_prompts: requestExtensionPrompts, // Add extension prompts to the request
     };
 }
 
@@ -396,4 +455,132 @@ export function getMessageTimeStamp() {
 
     const formattedDate = `${month} ${day}, ${year} ${hours}:${minutes}:${seconds}.${milliseconds}${meridiem}`;
     return formattedDate;
+}
+
+// ===== CONTEXT MANAGEMENT UTILITIES =====
+
+// Simple context size constants - following frontend logic
+const UNLOCKED_MAX = 512 * 1024; // 512k tokens when unlocked
+const DEFAULT_MAX_CONTEXT = 8192; // Default limit when locked
+const CHARACTERS_PER_TOKEN_RATIO = 3.35; // Same as frontend
+
+/**
+ * Get the maximum context size - simplified following frontend logic
+ * @param {boolean} isUnlocked - Whether context limits are unlocked
+ * @returns {number} Maximum context size in tokens
+ */
+export function getMaxContextSize(isUnlocked = false) {
+    return isUnlocked ? UNLOCKED_MAX : DEFAULT_MAX_CONTEXT;
+}
+
+/**
+ * Estimate token count for text using character-based approximation
+ * @param {string} text - Text to estimate tokens for
+ * @returns {number} Estimated token count
+ */
+export function estimateTokenCount(text) {
+    if (!text || typeof text !== 'string') return 0;
+    return Math.ceil(text.length / CHARACTERS_PER_TOKEN_RATIO);
+}
+
+/**
+ * Estimate token count for a message object
+ * @param {object} message - Message object with role and content
+ * @returns {number} Estimated token count
+ */
+export function estimateMessageTokenCount(message) {
+    if (!message) return 0;
+
+    let count = 0;
+
+    // Add tokens for message metadata (role, name, etc.)
+    count += 4; // Base tokens per message
+
+    if (message.role) {
+        count += estimateTokenCount(message.role);
+    }
+
+    if (message.name || message.is_user !== undefined) {
+        count += 1; // Name token
+    }
+
+    if (message.content) {
+        count += estimateTokenCount(message.content);
+    } else if (message.mes) {
+        count += estimateTokenCount(message.mes);
+    }
+
+    return count;
+}
+
+/**
+ * Apply context management to messages array
+ * @param {object[]} messages - Array of messages
+ * @param {boolean} isUnlocked - Whether context limits are unlocked
+ * @param {number} maxTokens - Maximum response tokens
+ * @returns {object[]} Filtered messages that fit within context
+ */
+export function applyContextManagement(messages, isUnlocked = false, maxTokens = 2048) {
+    const maxContextSize = getMaxContextSize(isUnlocked);
+    const availableTokens = maxContextSize - maxTokens; // Reserve tokens for response
+
+    console.log(`[CONTEXT] Max context: ${maxContextSize}, Available: ${availableTokens}, Unlocked: ${isUnlocked}`);
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+        return messages;
+    }
+
+    // Separate system messages and regular messages
+    const systemMessages = [];
+    const regularMessages = [];
+
+    for (const message of messages) {
+        if (message.role === 'system' || message.is_system) {
+            systemMessages.push(message);
+        } else {
+            regularMessages.push(message);
+        }
+    }
+
+    // Calculate system messages token count (these are always included)
+    let systemTokens = 0;
+    for (const message of systemMessages) {
+        systemTokens += estimateMessageTokenCount(message);
+    }
+
+    console.log(`[CONTEXT] System messages tokens: ${systemTokens}`);
+
+    // Available tokens for regular messages
+    const tokensForRegularMessages = availableTokens - systemTokens;
+
+    if (tokensForRegularMessages <= 0) {
+        console.warn('[CONTEXT] System messages exceed available context!');
+        return systemMessages; // Return only system messages if they fill the context
+    }
+
+    // Select regular messages from newest to oldest
+    const selectedMessages = [];
+    let currentTokens = 0;
+
+    // Process messages in reverse order (newest first)
+    for (let i = regularMessages.length - 1; i >= 0; i--) {
+        const message = regularMessages[i];
+        const messageTokens = estimateMessageTokenCount(message);
+
+        if (currentTokens + messageTokens <= tokensForRegularMessages) {
+            selectedMessages.unshift(message); // Add to beginning to maintain order
+            currentTokens += messageTokens;
+            console.log(`[CONTEXT] Added message ${i}, tokens: ${messageTokens}, total: ${currentTokens}`);
+        } else {
+            console.log(`[CONTEXT] Skipping message ${i} (${messageTokens} tokens) - would exceed limit`);
+            break;
+        }
+    }
+
+    // Combine system messages and selected regular messages
+    const result = [...systemMessages, ...selectedMessages];
+
+    console.log(`[CONTEXT] Final result: ${result.length} messages, estimated ${systemTokens + currentTokens} tokens`);
+
+    return result;
 }

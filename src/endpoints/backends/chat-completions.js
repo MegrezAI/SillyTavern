@@ -75,6 +75,17 @@ const API_DEEPSEEK = 'https://api.deepseek.com/beta';
 const API_XAI = 'https://api.x.ai/v1';
 const API_POLLINATIONS = 'https://text.pollinations.ai/openai';
 
+// Add these constants at the top of the file
+const DEPTH_PROMPT_DEPTH_DEFAULT = 4;
+const DEPTH_PROMPT_ROLE_DEFAULT = 'system';
+
+// Map role names to numeric values
+const EXTENSION_PROMPT_ROLES = {
+    'system': 0,
+    'user': 1,
+    'assistant': 2,
+};
+
 /**
  * Applies a post-processing step to the generated messages.
  * @param {object[]} messages Messages to post-process
@@ -1635,93 +1646,178 @@ router.post('/generate-simple', async function (request, response) {
 
     // Check if this is a simplified request (char_name, file_name, messages, stream)
     const { char_name, file_name, messages, stream = false } = request.body;
+    if (!char_name || !file_name || !Array.isArray(messages)) {
+        return response.status(400).send({ error: 'Invalid request body' });
+    }
 
     let simpleRequestData = null; // Store for later use in saving
 
-    if (char_name && file_name && Array.isArray(messages)) {
+    let defaultSettings = null;
+    try {
+        // Get DEFAULT_USER's configuration
+        const handle = DEFAULT_USER.handle;
+        const defaultDirectories = getUserDirectories(handle);
+        defaultSettings = loadUserSettings(defaultDirectories);
+
+        // Load character data from default user's directories
+        const characterData = await loadCharacterData(defaultDirectories, char_name);
+        if (!characterData) {
+            return response.status(404).send({ error: 'Character not found' });
+        }
+
+        // Load chat history from current user's directories
+        const chatHistory = await loadChatHistory(request.user.directories, characterData.avatar, file_name);
+
+        // Try to get existing chat metadata from the first line of the chat file
+        let existingChatMetadata = null;
         try {
-            // Get DEFAULT_USER's configuration
-            const handle = DEFAULT_USER.handle;
-            const defaultDirectories = getUserDirectories(handle);
-            const defaultSettings = loadUserSettings(defaultDirectories);
-
-            console.log('DEBUG: Default user settings loaded');
-            console.log('DEBUG: main_api =', defaultSettings.main_api);
-            console.log('DEBUG: chat_completion_source =', defaultSettings.oai_settings?.chat_completion_source);
-
-            // Load character data from current user's directories
-            const characterData = await loadCharacterData(request.user.directories, char_name);
-            if (!characterData) {
-                return response.status(404).send({ error: 'Character not found' });
-            }
-
-            // Load chat history from current user's directories
-            const chatHistory = await loadChatHistory(request.user.directories, characterData.avatar, file_name);
-
-            // Try to get existing chat metadata from the first line of the chat file
-            let existingChatMetadata = null;
-            try {
-                const chatFilePath = path.join(
-                    request.user.directories.chats,
-                    characterData.name,
-                    sanitize(`${file_name}.jsonl`),
-                );
-                if (fs.existsSync(chatFilePath)) {
-                    const firstLine = await readFirstLine(chatFilePath);
-                    if (firstLine) {
-                        const parsed = tryParse(firstLine);
-                        if (parsed && (parsed.chat_metadata || parsed.user_name)) {
-                            existingChatMetadata = parsed;
-                        }
+            const chatFilePath = path.join(
+                request.user.directories.chats,
+                characterData.name,
+                sanitize(`${file_name}.jsonl`),
+            );
+            if (fs.existsSync(chatFilePath)) {
+                const firstLine = await readFirstLine(chatFilePath);
+                if (firstLine) {
+                    const parsed = tryParse(firstLine);
+                    if (parsed && (parsed.chat_metadata || parsed.user_name)) {
+                        existingChatMetadata = parsed;
                     }
                 }
-            } catch (error) {
-                console.warn('[SIMPLE] Could not read existing chat metadata:', error);
             }
-
-            // Store simple request data for later use
-            simpleRequestData = {
-                char_name,
-                file_name,
-                characterData,
-                userMessages: messages,
-                chatHistory,
-                userDirectories: request.user.directories,
-                existingChatMetadata,
-            };
-
-            // Build complete request body using DEFAULT_USER's settings
-            const fullRequestBody = buildFullRequestBody({
-                characterData,
-                messages: [...chatHistory, ...messages],
-                stream,
-                userSettings: defaultSettings,
-            });
-
-            console.log('DEBUG: Built full request body with chat_completion_source =', fullRequestBody.chat_completion_source);
-
-            // Replace request body with the full request
-            request.body = fullRequestBody;
-
         } catch (error) {
-            console.error('Simple request conversion error:', error);
-            return response.status(500).send({ error: error.message });
+            console.warn('[SIMPLE] Could not read existing chat metadata:', error);
         }
+
+        // Store simple request data for later use
+        simpleRequestData = {
+            char_name,
+            file_name,
+            characterData,
+            userMessages: messages,
+            chatHistory,
+            userDirectories: request.user.directories,
+            existingChatMetadata,
+        };
+
+        // Get extension prompts from character data
+        const extensionPrompts = {};
+
+        // Memory/Summary (1_memory)
+        if (characterData.data?.extensions?.memory?.enabled) {
+            extensionPrompts['1_memory'] = {
+                value: characterData.data.extensions.memory.value || '',
+                position: characterData.data.extensions.memory.position || 0,
+                depth: characterData.data.extensions.memory.depth || 2,
+                role: characterData.data.extensions.memory.role || 0,
+            };
+        }
+
+        // Floating Prompt (2_floating_prompt)
+        if (characterData.data?.extensions?.floating_prompt?.enabled) {
+            extensionPrompts['2_floating_prompt'] = {
+                value: characterData.data.extensions.floating_prompt.value || '',
+                position: characterData.data.extensions.floating_prompt.position || 0,
+                depth: characterData.data.extensions.floating_prompt.depth || 0,
+                role: characterData.data.extensions.floating_prompt.role || 0,
+            };
+        }
+
+        // Vectors (3_vectors)
+        if (characterData.data?.extensions?.vectors?.enabled) {
+            extensionPrompts['3_vectors'] = {
+                value: characterData.data.extensions.vectors.value || '',
+                position: characterData.data.extensions.vectors.position || 0,
+                depth: characterData.data.extensions.vectors.depth || 0,
+                role: characterData.data.extensions.vectors.role || 0,
+            };
+        }
+
+        // Vectors Data Bank (4_vectors_data_bank)
+        if (characterData.data?.extensions?.vectors_data_bank?.enabled) {
+            extensionPrompts['4_vectors_data_bank'] = {
+                value: characterData.data.extensions.vectors_data_bank.value || '',
+                position: characterData.data.extensions.vectors_data_bank.position || 0,
+                depth: characterData.data.extensions.vectors_data_bank.depth || 0,
+                role: characterData.data.extensions.vectors_data_bank.role || 0,
+            };
+        }
+
+        // ChromaDB (Smart Context)
+        if (characterData.data?.extensions?.chromadb?.enabled) {
+            extensionPrompts['chromadb'] = {
+                value: characterData.data.extensions.chromadb.value || '',
+                position: characterData.data.extensions.chromadb.position || 0,
+                depth: characterData.data.extensions.chromadb.depth || 0,
+                role: characterData.data.extensions.chromadb.role || 0,
+            };
+        }
+
+        // Persona Description
+        if (characterData.data?.extensions?.persona_description?.enabled) {
+            extensionPrompts['PERSONA_DESCRIPTION'] = {
+                value: characterData.data.extensions.persona_description.value || '',
+                position: characterData.data.extensions.persona_description.position || 0,
+                depth: characterData.data.extensions.persona_description.depth || 0,
+                role: characterData.data.extensions.persona_description.role || 0,
+            };
+        }
+
+        // Depth Prompt
+        if (characterData.data?.extensions?.depth_prompt) {
+            const depthPromptText = characterData.data.extensions.depth_prompt.prompt || '';
+            const depthPromptDepth = characterData.data.extensions.depth_prompt.depth ?? DEPTH_PROMPT_DEPTH_DEFAULT;
+            const depthPromptRole = EXTENSION_PROMPT_ROLES[characterData.data.extensions.depth_prompt.role ?? DEPTH_PROMPT_ROLE_DEFAULT] ?? EXTENSION_PROMPT_ROLES.system;
+
+            extensionPrompts['DEPTH_PROMPT'] = {
+                value: depthPromptText,
+                position: 1, // IN_CHAT
+                depth: depthPromptDepth,
+                role: depthPromptRole,
+            };
+        }
+
+        // Build complete request body using DEFAULT_USER's settings
+        const injectedMessages = injectExtensionPrompts([...chatHistory, ...messages], extensionPrompts, characterData, defaultSettings.oai_settings?.chat_completion_source);
+
+        const fullRequestBody = buildFullRequestBody({
+            characterData,
+            messages: injectedMessages,
+            stream,
+            userSettings: defaultSettings,
+            extensionPrompts, // Add extension prompts to the request
+        });
+
+        // Replace request body with the full request
+        request.body = fullRequestBody;
+
+        // For Google AI, we don't need special handling since the injected messages
+        // are already properly formatted. convertGooglePrompt will handle system messages correctly.
+
+    } catch (error) {
+        console.error('Simple request conversion error:', error);
+        return response.status(500).send({ error: error.message });
     }
 
-    const postProcessingType = request.body.custom_prompt_post_processing;
-    if (Array.isArray(request.body.messages) && postProcessingType) {
-        console.info('Applying custom prompt post-processing of type', postProcessingType);
-        request.body.messages = postProcessPrompt(
-            request.body.messages,
-            postProcessingType,
-            getPromptNames(request));
-    }
 
-    console.log('DEBUG: chat_completion_source =', request.body.chat_completion_source);
-    console.log('DEBUG: CHAT_COMPLETION_SOURCES.DEEPSEEK =', CHAT_COMPLETION_SOURCES.DEEPSEEK);
-    console.log('DEBUG: comparison result =', request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.DEEPSEEK);
-    console.log('DEBUG: full request body =', JSON.stringify(request.body, null, 2));
+    // // Apply context management for simple requests
+    // console.info('[SIMPLE] Applying context management');
+
+    // // Read settings from DEFAULT_USER, not from request body
+    // const isUnlocked = defaultSettings.power_user?.max_context_unlocked || false;
+    // const maxTokens = defaultSettings.oai_settings?.openai_max_tokens ||
+    //     defaultSettings.oai_settings?.max_completion_tokens ||
+    //     2048;
+
+    // request.body.messages = applyContextManagement(
+    //     request.body.messages,
+    //     isUnlocked,
+    //     maxTokens,
+    // );
+
+    // console.info(`[SIMPLE] Context management applied: ${request.body.messages.length} messages remaining`);
+    // console.debug(`[SIMPLE] Settings - Unlocked: ${isUnlocked}, Max tokens: ${maxTokens}`);
+
 
     // If this is a simple request, set up auto-save after response
     if (simpleRequestData) {
@@ -2022,47 +2118,41 @@ router.post('/generate-simple', async function (request, response) {
         let collectedContent = '';
 
         if (requestBody.stream) {
-            // Handle streaming response - override write method
             const originalWrite = response.write;
             response.write = function (chunk) {
-                if (chunk) {
-                    // Parse SSE data to extract content
-                    const chunkStr = chunk.toString();
-                    const lines = chunkStr.split('\n');
-                    for (const line of lines) {
-                        if (line.startsWith('data: ') && !line.includes('[DONE]')) {
-                            try {
-                                const data = JSON.parse(line.slice(6));
-
-                                // Handle OpenAI-like format (most APIs)
-                                if (data.choices?.[0]?.delta?.content) {
-                                    collectedContent += data.choices[0].delta.content;
-                                }
-                                // Handle Google AI/Gemini format
-                                else if (data.candidates?.[0]?.content?.parts) {
-                                    for (const part of data.candidates[0].content.parts) {
-                                        if (part.text) {
-                                            collectedContent += part.text;
-                                        }
+                const chunkStr = chunk.toString();
+                const lines = chunkStr.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('data: ') && !line.includes('[DONE]')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            // Handle OpenAI-like format (most APIs)
+                            if (data.choices?.[0]?.delta?.content) {
+                                collectedContent += data.choices[0].delta.content;
+                            }
+                            // Handle Google AI/Gemini format
+                            else if (data.candidates?.[0]?.content?.parts) {
+                                for (const part of data.candidates[0].content.parts) {
+                                    if (part.text) {
+                                        collectedContent += part.text;
                                     }
                                 }
-                                // Handle other potential formats
-                                else if (data.content) {
-                                    collectedContent += data.content;
-                                }
-                                else if (data.text) {
-                                    collectedContent += data.text;
-                                }
-                            } catch (e) {
-                                // Ignore parsing errors
                             }
+                            // Handle other potential formats
+                            else if (data.content) {
+                                collectedContent += data.content;
+                            }
+                            else if (data.text) {
+                                collectedContent += data.text;
+                            }
+                        } catch (e) {
+                            // Ignore parsing errors
                         }
                     }
                 }
-                return originalWrite.call(this, chunk);
+                return originalWrite.apply(this, arguments);
             };
         } else {
-            // Handle non-streaming response - override send method
             const originalSend = response.send;
             response.send = function (data) {
                 try {
@@ -2101,30 +2191,23 @@ router.post('/generate-simple', async function (request, response) {
                     // Build updated chat data
                     const currentTime = Date.now();
                     const timeString = getMessageTimeStamp();
-
-                    // Get the actual username
                     const actualUserName = simpleRequestData.existingChatMetadata?.user_name;
 
-
                     const updatedChatData = [
-                        // Add metadata line (required by SillyTavern format)
                         simpleRequestData.existingChatMetadata || {
                             user_name: actualUserName,
                             character_name: simpleRequestData.characterData.name,
                             create_date: simpleRequestData.file_name,
                             chat_metadata: {},
                         },
-                        // Add existing chat history
                         ...simpleRequestData.chatHistory,
-                        // Add user messages
                         ...simpleRequestData.userMessages.map(msg => ({
-                            name: actualUserName,  // Use actual username instead of hardcoded 'User'
+                            name: actualUserName,
                             is_user: true,
                             mes: msg.content || msg.mes || '',
                             send_date: timeString,
                             sent_at: currentTime,
                         })),
-                        // Add AI response
                         {
                             name: simpleRequestData.characterData.name,
                             is_user: false,
@@ -2162,6 +2245,100 @@ router.post('/generate-simple', async function (request, response) {
         } catch (error) {
             console.error('[SIMPLE] Failed to save chat data:', error);
         }
+    }
+
+    /**
+     * Injects extension prompts into chat messages.
+     * @param {object[]} messages Array of chat messages
+     * @param {object} extensionPrompts Extension prompts object
+     * @param {object} characterData Character data
+     * @param {string} chatCompletionSource Chat completion source (for format-specific handling)
+     * @returns {object} Result object with injected messages and system prompts
+     */
+    function injectExtensionPrompts(messages, extensionPrompts, characterData, chatCompletionSource) {
+        // Reverse messages for easier insertion
+        messages.reverse();
+
+        let totalInsertedMessages = 0;
+        const maxDepth = Object.keys(extensionPrompts).length > 0
+            ? Math.max(...Object.values(extensionPrompts).map(p => p.depth || 0))
+            : 0;
+
+        console.log('Chat completion source:', chatCompletionSource);
+
+        // Process each depth level
+        for (let i = 0; i <= maxDepth; i++) {
+            // Get prompts for current depth
+            const depthPrompts = Object.entries(extensionPrompts)
+                .filter(([_, prompt]) => prompt.position === 1 && prompt.depth === i) // Only IN_CHAT prompts
+                .sort(([a], [b]) => a.localeCompare(b)); // Sort by key for consistent order
+
+            console.log(`Processing depth ${i}: found ${depthPrompts.length} prompts`);
+            if (depthPrompts.length > 0) {
+                console.log(`Depth ${i} prompts:`, depthPrompts.map(([key, prompt]) => ({
+                    key,
+                    contentLength: prompt.value?.length,
+                    role: prompt.role,
+                })));
+            }
+
+            // Group prompts by role
+            const roleMessages = [];
+            const roles = [0, 1, 2]; // system, user, assistant in order of priority
+
+            for (const role of roles) {
+                const rolePrompts = depthPrompts
+                    .filter(([_, prompt]) => prompt.role === role)
+                    .map(([_, prompt]) => prompt.value)
+                    .filter(value => value && value.trim())
+                    .join('\n');
+
+                if (rolePrompts) {
+                    const isSystem = role === 0;
+                    const isUser = role === 1;
+
+                    if (isSystem) {
+                        // For other APIs, use OpenAI format for system messages
+                        roleMessages.push({
+                            role: 'system',
+                            content: rolePrompts.trim(),
+                        });
+                    } else {
+                        const name = isUser ? characterData.user_name : characterData.name;
+                        roleMessages.push({
+                            name: name,
+                            is_user: isUser,
+                            is_system: false,
+                            send_date: getMessageTimeStamp(),
+                            mes: rolePrompts.trim(),
+                        });
+                    }
+                }
+            }
+
+            // Insert messages at the appropriate depth
+            if (roleMessages.length > 0) {
+                const injectIdx = i + totalInsertedMessages;
+                console.log(`Inserting ${roleMessages.length} messages at depth ${i}, index ${injectIdx}, total messages: ${messages.length}`);
+
+                if (injectIdx <= messages.length) {
+                    messages.splice(injectIdx, 0, ...roleMessages);
+                    totalInsertedMessages += roleMessages.length;
+                    console.log(`Successfully inserted. New total messages: ${messages.length}`);
+                } else {
+                    console.log(`Cannot insert at index ${injectIdx}, messages array only has ${messages.length} items. Appending to end.`);
+                    messages.push(...roleMessages);
+                    totalInsertedMessages += roleMessages.length;
+                }
+            }
+        }
+
+        // Restore original order
+        messages.reverse();
+
+        console.log(`Injected ${totalInsertedMessages} extension prompt messages`);
+
+        return messages;
     }
 });
 
