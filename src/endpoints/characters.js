@@ -1185,9 +1185,17 @@ router.get('/tags', async function (request, response) {
         const settings = fs.readFileSync(pathToSettings, 'utf8');
         const { tags } = JSON.parse(settings);
 
+        const { lang } = request.query;
 
+        let filteredTags;
+        if (lang === 'en') {
+            // color has value means it's an English tag
+            filteredTags = tags.filter(tag => tag.color);
+        } else {
+            filteredTags = tags.filter(tag => !tag.color);
+        }
 
-        return response.send(tags);
+        return response.send(filteredTags);
     } catch (err) {
         console.error(err);
         response.sendStatus(500);
