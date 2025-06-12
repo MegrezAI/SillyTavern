@@ -1191,8 +1191,10 @@ router.get('/tags', async function (request, response) {
         if (lang === 'en') {
             // color has value means it's an English tag
             filteredTags = tags.filter(tag => tag.color);
-        } else {
+        } else if (lang === 'zh') {
             filteredTags = tags.filter(tag => !tag.color);
+        } else {
+            filteredTags = tags;
         }
 
         return response.send(filteredTags);
