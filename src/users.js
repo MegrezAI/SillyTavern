@@ -988,6 +988,27 @@ function createRouteHandler(directoryFn) {
 }
 
 /**
+ * Creates a route handler for serving files from default user's directory.
+ * @param {(handle: string) => string} directoryFn A function that returns the directory path based on user handle
+ * @returns {import('express').RequestHandler}
+ */
+function createDefaultUserRouteHandler(directoryFn) {
+    return async (req, res) => {
+        try {
+            const directory = directoryFn(DEFAULT_USER.handle);
+            const filePath = decodeURIComponent(req.params[0]);
+            const exists = fs.existsSync(path.join(directory, filePath));
+            if (!exists) {
+                return res.sendStatus(404);
+            }
+            return res.sendFile(filePath, { root: directory });
+        } catch (error) {
+            return res.sendStatus(500);
+        }
+    };
+}
+
+/**
  * Creates a route handler for serving extensions.
  * @param {(req: import('express').Request) => string} directoryFn A function that returns the directory path to serve files from
  * @returns {import('express').RequestHandler}
@@ -1100,7 +1121,7 @@ export async function getAllEnabledUsers() {
  */
 export const router = express.Router();
 router.use('/backgrounds/*', createRouteHandler(req => req.user.directories.backgrounds));
-router.use('/characters/*', createRouteHandler(req => req.user.directories.characters));
+router.use('/characters/*', createDefaultUserRouteHandler(handle => getUserDirectories(handle).characters));
 router.use('/User%20Avatars/*', createRouteHandler(req => req.user.directories.avatars));
 router.use('/assets/*', createRouteHandler(req => req.user.directories.assets));
 router.use('/user/images/*', createRouteHandler(req => req.user.directories.userImages));
