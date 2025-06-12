@@ -1291,7 +1291,10 @@ router.get('/list', async function (request, response) {
             if (validTagIds) {
                 data = data.filter(char => {
                     const charTagIds = tag_map[char.avatar] || [];
-                    // The character must have at least one tag that matches the language condition
+                    // If character has no tags, include it for all languages
+                    if (charTagIds.length === 0) {
+                        return true;
+                    }
                     return charTagIds.some(tagId => validTagIds.includes(tagId));
                 });
             }
