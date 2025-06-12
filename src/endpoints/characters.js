@@ -1189,9 +1189,10 @@ router.get('/tags', async function (request, response) {
 
         let filteredTags;
         if (lang === 'en') {
-            // color has value means it's an English tag
+            // English: if color has value, it's an English tag
             filteredTags = tags.filter(tag => tag.color);
         } else if (lang === 'zh') {
+            // Chinese: if color has no value, it's a Chinese tag
             filteredTags = tags.filter(tag => !tag.color);
         } else {
             filteredTags = tags;
@@ -1239,7 +1240,7 @@ router.get('/list', async function (request, response) {
         const handle = DEFAULT_USER.handle;
         const directories = getUserDirectories(handle);
 
-        const { q, tag, page, page_size } = request.query;
+        const { q, tag, lang, page, page_size } = request.query;
         const pageNum = page ? parseInt(String(page)) : 1;
         const pageSize = page_size ? parseInt(String(page_size)) : 20;
 
@@ -1272,6 +1273,26 @@ router.get('/list', async function (request, response) {
                 data = data.filter(char => {
                     const charTagIds = tag_map[char.avatar] || [];
                     return charTagIds.includes(tagId);
+                });
+            }
+        }
+
+        // Filter characters based on language parameter
+        if (lang) {
+            let validTagIds;
+            if (lang === 'en') {
+                // English: get tags with color field, means it's an English tag
+                validTagIds = tags.filter(tag => tag.color).map(tag => tag.id);
+            } else if (lang === 'zh') {
+                // Chinese: get tags without color field, means it's a Chinese tag
+                validTagIds = tags.filter(tag => !tag.color).map(tag => tag.id);
+            }
+
+            if (validTagIds) {
+                data = data.filter(char => {
+                    const charTagIds = tag_map[char.avatar] || [];
+                    // The character must have at least one tag that matches the language condition
+                    return charTagIds.some(tagId => validTagIds.includes(tagId));
                 });
             }
         }
