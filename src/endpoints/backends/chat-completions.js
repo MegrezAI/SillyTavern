@@ -2012,7 +2012,7 @@ router.post('/generate-simple', async function (request, response) {
         'prompt': isTextCompletion === true ? textPrompt : undefined,
         'model': request.body.model,
         'temperature': request.body.temperature,
-        'max_tokens': request.body.max_tokens,
+        'max_tokens': request.body.max_tokens || defaultSettings.oai_settings?.openai_max_tokens,
         'max_completion_tokens': request.body.max_completion_tokens,
         'stream': request.body.stream,
         'presence_penalty': request.body.presence_penalty,
