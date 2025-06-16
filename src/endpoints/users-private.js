@@ -8,7 +8,7 @@ import express from 'express';
 import { getUserAvatar, toKey, getPasswordHash, getPasswordSalt, createBackupArchive, ensurePublicDirectoriesExist, toAvatarKey } from '../users.js';
 import { SETTINGS_FILE } from '../constants.js';
 import { checkForNewContent, CONTENT_TYPES } from './content-manager.js';
-import { color, Cache } from '../util.js';
+import { color, Cache, safeReadFileSync } from '../util.js';
 
 const RESET_CACHE = new Cache(5 * 60 * 1000);
 
@@ -38,9 +38,15 @@ router.get('/me', async (request, response) => {
         }
 
         const user = request.user.profile;
+        const settingsPath = path.join(request.user.directories.root, SETTINGS_FILE);
+        const fileContent = safeReadFileSync(settingsPath, 'utf-8');
+        const settings = fileContent !== null ? JSON.parse(typeof fileContent === 'string' ? fileContent : fileContent.toString('utf-8')) : {};
+
         const viewModel = {
             handle: user.handle,
             name: user.name,
+            persona_name: settings.username || '',
+            persona_description: settings.power_user?.persona_description || '',
             avatar: await getUserAvatar(user.handle),
             admin: user.admin,
             password: !!user.password,
@@ -250,6 +256,43 @@ router.post('/reset-step2', async (request, response) => {
         return response.sendStatus(204);
     } catch (error) {
         console.error('Recover step 2 failed:', error);
+        return response.sendStatus(500);
+    }
+});
+
+router.post('/change-persona', async (request, response) => {
+    try {
+        if (!request.user) {
+            return response.sendStatus(403);
+        }
+
+        if (!request.body.persona_name && !request.body.persona_description) {
+            console.warn('Change persona failed: No fields to update');
+            return response.status(400).json({ error: 'No fields to update' });
+        }
+
+        const settingsPath = path.join(request.user.directories.root, SETTINGS_FILE);
+        const fileContent = safeReadFileSync(settingsPath, 'utf-8');
+        let settings = fileContent !== null ? JSON.parse(typeof fileContent === 'string' ? fileContent : fileContent.toString('utf-8')) : {};
+
+
+
+        if (request.body.persona_name) {
+            settings.username = request.body.persona_name;
+        }
+
+        if (request.body.persona_description) {
+            if (!settings.power_user) {
+                settings.power_user = {};
+            }
+            settings.power_user.persona_description = request.body.persona_description;
+        }
+
+        await fsPromises.writeFile(settingsPath, JSON.stringify(settings, null, 4), 'utf8');
+
+        return response.sendStatus(204);
+    } catch (error) {
+        console.error('Change persona failed:', error);
         return response.sendStatus(500);
     }
 });
