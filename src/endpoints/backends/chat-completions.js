@@ -55,7 +55,7 @@ import {
     webTokenizers,
     getWebTokenizer,
 } from '../tokenizers.js';
-import { retrievalMemories, isLeapRagEnabled } from '../leaprag.js';
+import { retrievalMemories, isLeapRagEnabled, createKnowledge, uploadChatContent } from '../leaprag.js';
 import path from 'node:path';
 import { readFirstLine } from '../chats.js';
 import { getUserDirectories } from '../../users.js';
@@ -2256,7 +2256,7 @@ router.post('/generate-simple', async function (request, response) {
                         },
                     ];
 
-                    await saveChatData(simpleRequestData, updatedChatData);
+                    await saveChatData(simpleRequestData, updatedChatData, request.user.profile);
                 }
             } catch (error) {
                 console.error('[SIMPLE] Error in auto-save or token tracking:', error);
@@ -2264,7 +2264,7 @@ router.post('/generate-simple', async function (request, response) {
         });
     }
 
-    async function saveChatData(simpleRequestData, chatData) {
+    async function saveChatData(simpleRequestData, chatData, userProfile) {
         try {
             const directoryName = simpleRequestData.characterData.name;
             const filePath = path.join(simpleRequestData.userDirectories.chats, directoryName, `${simpleRequestData.file_name}.jsonl`);
@@ -2273,6 +2273,44 @@ router.post('/generate-simple', async function (request, response) {
             const dirPath = path.join(simpleRequestData.userDirectories.chats, directoryName);
             if (!fs.existsSync(dirPath)) {
                 fs.mkdirSync(dirPath, { recursive: true });
+            }
+
+            // Check if LeapRAG is enabled and process upload
+            const kbId = chatData[0].chat_metadata?.leaprag_kb_id ?? '';
+            const shouldCreateKB = chatData[0].chat_metadata?.create_kb;
+            const shouldUseRAG = chatData[0].chat_metadata?.use_leaprag && isLeapRagEnabled(userProfile);
+
+            if (kbId && shouldUseRAG) {
+                if (shouldCreateKB) {
+                    await createKnowledge(userProfile, `${simpleRequestData.file_name}.jsonl`, kbId);
+                }
+
+                if (Array.isArray(chatData) && chatData.length >= 2) {
+                    const last = chatData[chatData.length - 1];
+                    const secondLast = chatData[chatData.length - 2];
+
+                    const isValidQAPair =
+                        secondLast?.is_user === true &&
+                        last?.is_user === false &&
+                        typeof secondLast.mes === 'string' && secondLast.mes.trim() &&
+                        typeof last.mes === 'string' && last.mes.trim();
+
+                    if (isValidQAPair) {
+                        try {
+                            await uploadChatContent(
+                                userProfile,
+                                secondLast.mes,
+                                last.mes,
+                                kbId,
+                                secondLast.name || 'User',
+                                last.name || 'AI',
+                                last.gen_finished,
+                            );
+                        } catch (err) {
+                            console.error('[SIMPLE] Upload chat content to knowledge failed:', err);
+                        }
+                    }
+                }
             }
 
             const jsonlData = chatData.map(item => JSON.stringify(item)).join('\n');
