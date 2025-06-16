@@ -18,6 +18,8 @@ import {
     GEMINI_SAFETY,
     OPENROUTER_HEADERS,
 } from '../../constants.js';
+
+import { updateUserTokenCount } from '../../db/user.js';
 import {
     forwardFetchResponse,
     getConfigValue,
@@ -698,8 +700,8 @@ async function sendMakerSuiteRequest(request, response) {
                 return response.send({ error: { message } });
             }
 
-            // Wrap it back to OAI format
-            const reply = { choices: [{ 'message': { 'content': responseText } }], responseContent };
+            // Wrap it back to OAI format + preserve usage metadata
+            const reply = { choices: [{ 'message': { 'content': responseText } }], responseContent, usageMetadata: generateResponseJson.usageMetadata };
             return response.send(reply);
         }
     } catch (error) {
@@ -1819,9 +1821,9 @@ router.post('/generate-simple', async function (request, response) {
     // console.debug(`[SIMPLE] Settings - Unlocked: ${isUnlocked}, Max tokens: ${maxTokens}`);
 
 
-    // If this is a simple request, set up auto-save after response
+    // If this is a simple request, set up auto-save and token tracking after response
     if (simpleRequestData) {
-        setupAutoSaveAfterResponse(response, simpleRequestData, request.body);
+        setupAutoSaveAndTokenTrackingAfterResponse(response, simpleRequestData, request.body);
     }
 
     switch (request.body.chat_completion_source) {
@@ -2114,8 +2116,9 @@ router.post('/generate-simple', async function (request, response) {
         }
     }
 
-    function setupAutoSaveAfterResponse(response, simpleRequestData, requestBody) {
+    function setupAutoSaveAndTokenTrackingAfterResponse(response, simpleRequestData, requestBody) {
         let collectedContent = '';
+        let totalTokenCount = 0;
 
         if (requestBody.stream) {
             const originalWrite = response.write;
@@ -2126,6 +2129,20 @@ router.post('/generate-simple', async function (request, response) {
                     if (line.startsWith('data: ') && !line.includes('[DONE]')) {
                         try {
                             const data = JSON.parse(line.slice(6));
+
+                            // Get the token count of Google/Gemini model
+                            if (data.usageMetadata?.totalTokenCount) {
+                                totalTokenCount = data.usageMetadata.totalTokenCount;
+                            }
+                            // Get the token count of DeepSeek model
+                            else if (data.usage?.total_tokens) {
+                                totalTokenCount = data.usage.total_tokens;
+                            }
+                            // Get the token count of OpenAI compatible model
+                            else if (data.x_groq?.usage?.total_tokens) {
+                                totalTokenCount = data.x_groq.usage.total_tokens;
+                            }
+
                             // Handle OpenAI-like format (most APIs)
                             if (data.choices?.[0]?.delta?.content) {
                                 collectedContent += data.choices[0].delta.content;
@@ -2162,6 +2179,19 @@ router.post('/generate-simple', async function (request, response) {
                         responseData = JSON.parse(data);
                     }
 
+                    // Get the token count of Google/Gemini model (non-streaming response)
+                    if (responseData.usageMetadata?.totalTokenCount) {
+                        totalTokenCount = responseData.usageMetadata.totalTokenCount;
+                    }
+                    // Get the token count of DeepSeek model (non-streaming response)
+                    else if (responseData.usage?.total_tokens) {
+                        totalTokenCount = responseData.usage.total_tokens;
+                    }
+                    // Get the token count of OpenAI compatible model (non-streaming response)
+                    else if (responseData.x_groq?.usage?.total_tokens) {
+                        totalTokenCount = responseData.x_groq.usage.total_tokens;
+                    }
+
                     // Handle OpenAI-like format
                     if (responseData.choices?.[0]?.message?.content) {
                         collectedContent = responseData.choices[0].message.content;
@@ -2184,9 +2214,15 @@ router.post('/generate-simple', async function (request, response) {
             };
         }
 
-        // Listen for response finish to save chat data
+        // Listen for response finish to save chat data and update token count
         response.on('finish', async () => {
             try {
+                if (totalTokenCount > 0) {
+                    const groupId = request.user?.profile?.handle;
+                    console.info(`[SIMPLE] Updating token count for user ${groupId || 'unknown'}, adding ${totalTokenCount} tokens`);
+                    await updateUserTokenCount(groupId, totalTokenCount);
+                }
+
                 if (collectedContent.trim()) {
                     // Build updated chat data
                     const currentTime = Date.now();
@@ -2223,7 +2259,7 @@ router.post('/generate-simple', async function (request, response) {
                     await saveChatData(simpleRequestData, updatedChatData);
                 }
             } catch (error) {
-                console.error('[SIMPLE] Error in auto-save:', error);
+                console.error('[SIMPLE] Error in auto-save or token tracking:', error);
             }
         });
     }

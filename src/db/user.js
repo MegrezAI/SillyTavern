@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from './index.js';
 import { userInfo } from './schema/user.js';
+import { sql } from 'drizzle-orm';
 
 export async function createUserInfo(user) {
     try {
@@ -35,8 +36,6 @@ export async function updateUserInfo(user) {
     }
 }
 
-
-
 export async function findUserInfoById(group_id) {
     try {
         const user = await db.query.userInfo.findFirst({
@@ -55,6 +54,30 @@ export async function findAllUserInfo() {
         return users;
     } catch (error) {
         console.error('Error getting all users from database:', error);
+        throw error;
+    }
+}
+
+
+export async function updateUserTokenCount(groupId, tokenCount) {
+    try {
+        const currentUser = await findUserInfoById(groupId);
+        const currentTokens = currentUser?.total_tokens || 0;
+        const newTotalTokens = currentTokens + tokenCount;
+
+        await db.update(userInfo)
+            .set({
+                total_tokens: sql`${userInfo.total_tokens} + ${tokenCount}`,
+                updated_at: Date.now(),
+            })
+            .where(eq(userInfo.group_id, groupId));
+
+        console.info(`[TOKEN] User ${groupId} token count update:`);
+        console.info(`  └─ Before: ${currentTokens} tokens`);
+        console.info(`  └─ Added: ${tokenCount} tokens`);
+        console.info(`  └─ After: ${newTotalTokens} tokens`);
+    } catch (error) {
+        console.error('Error updating user token count:', error);
         throw error;
     }
 }
