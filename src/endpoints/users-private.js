@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 
 import storage from 'node-persist';
 import express from 'express';
+import writeFileAtomic from 'write-file-atomic';
 
 import { getUserAvatar, toKey, getPasswordHash, getPasswordSalt, createBackupArchive, ensurePublicDirectoriesExist, toAvatarKey } from '../users.js';
 import { SETTINGS_FILE } from '../constants.js';
@@ -288,7 +289,7 @@ router.post('/change-persona', async (request, response) => {
             settings.power_user.persona_description = request.body.persona_description;
         }
 
-        await fsPromises.writeFile(settingsPath, JSON.stringify(settings, null, 4), 'utf8');
+        await writeFileAtomic(settingsPath, JSON.stringify(settings, null, 4), 'utf8');
 
         return response.sendStatus(204);
     } catch (error) {
