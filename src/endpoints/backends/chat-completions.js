@@ -1647,7 +1647,7 @@ router.post('/generate-simple', async function (request, response) {
     if (!request.body) return response.status(400).send({ error: true });
 
     // Check if this is a simplified request (char_name, file_name, messages, stream)
-    const { char_name, file_name, messages, stream = false } = request.body;
+    const { char_name, file_name, messages, stream = false, chat_completion_source } = request.body;
     if (!char_name || !file_name || !Array.isArray(messages)) {
         return response.status(400).send({ error: 'Invalid request body' });
     }
@@ -1787,7 +1787,8 @@ router.post('/generate-simple', async function (request, response) {
             messages: injectedMessages,
             stream,
             userSettings: defaultSettings,
-            extensionPrompts, // Add extension prompts to the request
+            extensionPrompts,
+            chat_completion_source,
         });
 
         // Replace request body with the full request

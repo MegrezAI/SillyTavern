@@ -11,9 +11,10 @@ import { readCharacterData } from './endpoints/characters.js';
  * @param {boolean} params.stream Whether to stream
  * @param {object} params.userSettings Complete user settings
  * @param {object} params.extensionPrompts Extension prompts object
+ * @param {string} params.chat_completion_source Chat completion source
  * @returns {object} Complete request body
  */
-export function buildFullRequestBody({ characterData, messages, stream, userSettings, extensionPrompts = {} }) {
+export function buildFullRequestBody({ characterData, messages, stream, chat_completion_source, userSettings, extensionPrompts = {} }) {
     // Convert ST messages to OpenAI format
     const openaiMessages = [];
 
@@ -39,7 +40,7 @@ export function buildFullRequestBody({ characterData, messages, stream, userSett
             userSettings.username || 'User',
             characterData.name,
             characterData,
-            userSettings
+            userSettings,
         );
 
         openaiMessages.push({ role, content });
@@ -53,7 +54,7 @@ export function buildFullRequestBody({ characterData, messages, stream, userSett
         throw new Error(`No chat_completion_source configured in oai_settings. Current main_api is "${userSettings.main_api}", but simple requests require an OpenAI-compatible API to be configured in oai_settings.`);
     }
 
-    const chatCompletionSource = oaiSettings.chat_completion_source;
+    const chatCompletionSource = chat_completion_source || oaiSettings.chat_completion_source;
     const model = getChatCompletionModel(chatCompletionSource, oaiSettings);
 
     // For Google AI, we need to keep system prompts separate so they become individual parts
@@ -237,7 +238,7 @@ export function buildSystemPrompt(characterData, userSettings) {
             userSettings.username || 'User',
             characterData.name,
             characterData,
-            userSettings
+            userSettings,
         );
     }
 
@@ -251,7 +252,7 @@ export function buildSystemPrompt(characterData, userSettings) {
         userSettings.username || 'User',
         characterData.name,
         characterData,
-        userSettings
+        userSettings,
     );
 
     // Add character data sections with macro substitution
