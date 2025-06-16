@@ -2305,7 +2305,7 @@ router.post('/generate-simple', async function (request, response) {
                                 kbId,
                                 secondLast.name || 'User',
                                 last.name || 'AI',
-                                last.gen_finished,
+                                last.sent_at,
                             );
                         } catch (err) {
                             console.error('[SIMPLE] Upload chat content to knowledge failed:', err);

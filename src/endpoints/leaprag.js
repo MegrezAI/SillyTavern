@@ -118,7 +118,7 @@ export async function retrievalMemories(user_profile, {
     }
 }
 
-export async function uploadChatContent(user_profile, query, res, kb_id, user_name = '', char_name = '', gen_finished = '') {
+export async function uploadChatContent(user_profile, query, res, kb_id, user_name = '', char_name = '', sent_at = '') {
     const { apiKey, apiUrl, handle } = getLeapRagConfig(user_profile);
     if (!apiKey || !apiUrl) {
         return null;
@@ -127,7 +127,7 @@ export async function uploadChatContent(user_profile, query, res, kb_id, user_na
     try {
         const formData = new FormData();
         const content = `${user_name || 'Question'}：${query}\n${char_name || 'Response'}：${res}`;
-        const fileName = `${handle}_chat_${char_name}_${gen_finished}.txt`;
+        const fileName = `${handle}_chat_${char_name}_${sent_at}.txt`;
         formData.append('file', new Blob([content], { type: 'text/plain' }), fileName);
 
         if (kb_id) {

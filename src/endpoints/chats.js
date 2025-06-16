@@ -462,7 +462,7 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
                             kbId,
                             secondLast.name || 'User',
                             last.name || 'AI',
-                            last.gen_finished,
+                            last.send_at,
                         );
                     } catch (err) {
                         console.error('upload chat content to knowledge failed:', err);
