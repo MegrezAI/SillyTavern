@@ -24,6 +24,8 @@ autorunHostname: "auto"
 port: 8000
 # Database Url
 databaseUrl: postgresql://postgres:leap0715@localhost:5432/tavern
+# Admin authentication token for x-auth-key header (master key with full access - handle securely)
+authKey: "8reoQvn4CIkOALY2tacfWMK7fG3DFSBF"
 # Overrides the port for autorun in browser.
 # - Use -1 to use the server port.
 # - Specify a port to override the default.

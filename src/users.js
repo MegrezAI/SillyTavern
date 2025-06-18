@@ -26,6 +26,8 @@ const AVATAR_PREFIX = 'avatar:';
 const ENABLE_ACCOUNTS = getConfigValue('enableUserAccounts', false, 'boolean');
 const AUTHELIA_AUTH = getConfigValue('autheliaAuth', false, 'boolean');
 const PER_USER_BASIC_AUTH = getConfigValue('perUserBasicAuth', false, 'boolean');
+const AUTH_KEY = getConfigValue('authKey', '');
+
 const ANON_CSRF_SECRET = crypto.randomBytes(64).toString('base64');
 
 /**
@@ -867,8 +869,8 @@ export async function setUserDataMiddleware(request, response, next) {
     const leaprag_api_url = settings?.power_user?.leaprag_api_url || '';
     const leaprag_apikey = settings?.power_user?.leaprag_apikey || '';
 
-    // If user accounts are disabled, use the default user
-    if (!ENABLE_ACCOUNTS) {
+    const authKey = request.headers['x-auth-key'];
+    if (authKey && AUTH_KEY && authKey === AUTH_KEY) {
         const handle = DEFAULT_USER.handle;
         const directories = getUserDirectories(handle);
 
