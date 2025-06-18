@@ -26,9 +26,8 @@ const AVATAR_PREFIX = 'avatar:';
 const ENABLE_ACCOUNTS = getConfigValue('enableUserAccounts', false, 'boolean');
 const AUTHELIA_AUTH = getConfigValue('autheliaAuth', false, 'boolean');
 const PER_USER_BASIC_AUTH = getConfigValue('perUserBasicAuth', false, 'boolean');
-const AUTH_KEY = getConfigValue('authKey', '');
-
 const ANON_CSRF_SECRET = crypto.randomBytes(64).toString('base64');
+const AUTH_KEY = getConfigValue('authKey', '');
 
 /**
  * Cache for user directories.
@@ -870,7 +869,23 @@ export async function setUserDataMiddleware(request, response, next) {
     const leaprag_apikey = settings?.power_user?.leaprag_apikey || '';
 
     const authKey = request.headers['x-auth-key'];
-    if (authKey && AUTH_KEY && authKey === AUTH_KEY) {
+
+    if (!ENABLE_ACCOUNTS) {
+        const handle = DEFAULT_USER.handle;
+        const directories = getUserDirectories(handle);
+
+        request.user = {
+            profile: {
+                ...DEFAULT_USER,
+                leaprag_apikey,
+                leaprag_api_url,
+            },
+            directories: directories,
+        };
+        return next();
+    }
+
+    if (authKey && authKey === AUTH_KEY) {
         const handle = DEFAULT_USER.handle;
         const directories = getUserDirectories(handle);
 
