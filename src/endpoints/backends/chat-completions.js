@@ -1800,9 +1800,12 @@ router.post('/generate-simple', async function (request, response) {
             const chatMetadata = existingChatMetadata?.chat_metadata || {};
 
             // 获取最大上下文大小
-            const maxContext = defaultSettings.oai_settings?.openai_max_tokens ||
+            const totalContext = defaultSettings.oai_settings?.openai_max_context || 8192;
+            const maxTokens = defaultSettings.oai_settings?.openai_max_tokens ||
                 defaultSettings.oai_settings?.max_completion_tokens ||
-                4096;
+                300;
+
+            const maxContext = totalContext - maxTokens;
 
 
             // 构建聊天消息数组（用于世界书扫描）
