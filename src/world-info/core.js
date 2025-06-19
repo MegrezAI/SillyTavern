@@ -455,7 +455,9 @@ async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData, sorted
 
             const key = `${entry.world}.${entry.uid}`;
             allActivatedEntries.set(key, entry);
-            console.debug(`[WI] Entry ${entry.uid} activation successful, adding to prompt`, entry);
+            const contentPreview = entry.content ? (entry.content.length > 50 ? entry.content.substring(0, 50) + '...' : entry.content) : '';
+
+            console.debug(`[WI] Entry ${entry.uid} activation successful, adding to prompt. Content: "${contentPreview}"`);
 
             // 如果条目内容不为空，添加到递归缓冲区
             if (entry.content && entry.content.trim()) {
