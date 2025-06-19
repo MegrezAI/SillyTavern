@@ -18,7 +18,7 @@ import {
     GEMINI_SAFETY,
     OPENROUTER_HEADERS,
 } from '../../constants.js';
-
+import { getWorldInfoPrompt } from '../../world-info/core.js';
 import { updateUserTokenCount } from '../../db/user.js';
 import {
     forwardFetchResponse,
@@ -1778,6 +1778,168 @@ router.post('/generate-simple', async function (request, response) {
                 role: depthPromptRole,
             };
         }
+
+        // ========================================
+        // === 开始：世界书处理逻辑 ===
+        // ========================================
+        console.info('[SIMPLE] Processing World Info...');
+        let worldInfoResult = null;
+        try {
+
+            // 构建全局扫描数据
+            const globalScanData = {
+                personaDescription: characterData.persona || '',
+                characterDescription: characterData.description || '',
+                characterPersonality: characterData.personality || '',
+                characterDepthPrompt: characterData.data?.extensions?.depth_prompt?.prompt || '',
+                scenario: characterData.scenario || '',
+                creatorNotes: characterData.data?.creator_notes || characterData.creator_notes || '',
+            };
+
+            // 获取聊天元数据
+            const chatMetadata = existingChatMetadata?.chat_metadata || {};
+
+            // 获取最大上下文大小
+            const maxContext = defaultSettings.oai_settings?.openai_max_tokens ||
+                defaultSettings.oai_settings?.max_completion_tokens ||
+                4096;
+
+
+            // 构建聊天消息数组（用于世界书扫描）
+            const chatMessages = [...chatHistory, ...messages].map(msg => {
+                if (typeof msg === 'string') return msg;
+                return msg.content || msg.mes || '';
+            }).filter(Boolean);
+
+            // 调用世界书处理 - 传递实际的模型信息用于精确token计数
+            const requestModel = request.body.model || 'gpt-3.5-turbo';
+            worldInfoResult = await getWorldInfoPrompt(
+                chatMessages,
+                maxContext,
+                false, // isDryRun
+                globalScanData,
+                defaultDirectories, // userDirectories
+                characterData,
+                chatMetadata,
+                defaultSettings,
+                requestModel, // 传递实际的模型名称
+            );
+
+            console.info(`[SIMPLE] World Info processed: ${worldInfoResult.allActivatedEntries.size} entries activated`);
+            console.debug('[SIMPLE] World Info content lengths:', {
+                worldInfoBefore: worldInfoResult.worldInfoBefore?.length || 0,
+                worldInfoAfter: worldInfoResult.worldInfoAfter?.length || 0,
+                worldInfoDepth: worldInfoResult.worldInfoDepth?.length || 0,
+                anBefore: worldInfoResult.anBefore?.length || 0,
+                anAfter: worldInfoResult.anAfter?.length || 0,
+                worldInfoExamples: worldInfoResult.worldInfoExamples?.length || 0,
+            });
+
+        } catch (error) {
+            console.error('[SIMPLE] World Info processing error:', error);
+            worldInfoResult = {
+                worldInfoString: '',
+                worldInfoBefore: '',
+                worldInfoAfter: '',
+                worldInfoExamples: [],
+                worldInfoDepth: [],
+                anBefore: [],
+                anAfter: [],
+                allActivatedEntries: new Set(),
+            };
+        }
+
+        // ========================================
+        // === 结束：世界书处理逻辑 ===
+        // ========================================
+
+
+
+        // ========================================
+        // === 开始：世界书内容注入逻辑 ===
+        // ========================================
+
+        // 处理世界书前置内容（现在是字符串）
+        // 示例：worldInfoBefore = "这是世界背景\n这是角色设定\n这是场景描述"
+        if (worldInfoResult && worldInfoResult.worldInfoBefore) {
+            extensionPrompts['WORLD_INFO_BEFORE'] = {
+                value: worldInfoResult.worldInfoBefore,
+                position: 0, // BEFORE_PROMPT
+                depth: 0,
+                role: 0, // system
+            };
+        }
+
+        // 处理世界书后置内容（现在是字符串）
+        // 示例：worldInfoAfter = "补充背景信息\n额外的世界规则"
+        if (worldInfoResult && worldInfoResult.worldInfoAfter) {
+            extensionPrompts['WORLD_INFO_AFTER'] = {
+                value: worldInfoResult.worldInfoAfter,
+                position: 1, // IN_CHAT
+                depth: 0,
+                role: 0, // system
+            };
+        }
+
+        // 处理深度插入的世界书条目（现在是按深度分组的数组）
+        // 示例：worldInfoDepth = [
+        //   { depth: 2, entries: ["背景信息1", "背景信息2"], role: 0 },
+        //   { depth: 4, entries: ["细节描述"], role: 0 }
+        // ]
+        // entryContent 将是："背景信息1\n背景信息2" (字符串，而不是数组)
+        if (worldInfoResult && worldInfoResult.worldInfoDepth && worldInfoResult.worldInfoDepth.length > 0) {
+            worldInfoResult.worldInfoDepth.forEach((depthEntry, index) => {
+                const entryContent = depthEntry.entries.join('\n');
+                if (entryContent.trim()) {
+                    extensionPrompts[`WORLD_INFO_DEPTH_${index}`] = {
+                        value: entryContent,
+                        position: 1, // IN_CHAT
+                        depth: depthEntry.depth,
+                        role: 0, // system
+                    };
+                }
+            });
+        }
+
+        // 处理 Author's Note 前置内容（现在是字符串）
+        // 示例：anBefore = "重要规则1\n重要规则2\n重要规则3" (而不是 ["重要规则1", "重要规则2", "重要规则3"])
+        if (worldInfoResult && worldInfoResult.anBefore && worldInfoResult.anBefore.trim()) {
+            extensionPrompts['WORLD_INFO_AN_BEFORE'] = {
+                value: worldInfoResult.anBefore,
+                position: 1, // IN_CHAT
+                depth: 0,
+                role: 0, // system
+            };
+        }
+
+        // 处理 Author's Note 后置内容（现在是字符串）
+        // 示例：anAfter = "补充说明1\n补充说明2" (而不是 ["补充说明1", "补充说明2"])
+        if (worldInfoResult && worldInfoResult.anAfter && worldInfoResult.anAfter.trim()) {
+            extensionPrompts['WORLD_INFO_AN_AFTER'] = {
+                value: worldInfoResult.anAfter,
+                position: 1, // IN_CHAT
+                depth: 0,
+                role: 0, // system
+            };
+        }
+
+        // 处理示例内容（现在是字符串）
+        // 示例：worldInfoExamples = "用户: 你好\n助手: 您好！\n用户: 天气如何\n助手: 今天天气不错"
+        // (而不是 ["用户: 你好\n助手: 您好！", "用户: 天气如何\n助手: 今天天气不错"])
+        if (worldInfoResult && worldInfoResult.worldInfoExamples && worldInfoResult.worldInfoExamples.trim()) {
+            extensionPrompts['WORLD_INFO_EXAMPLES'] = {
+                value: worldInfoResult.worldInfoExamples,
+                position: 1, // IN_CHAT
+                depth: 0,
+                role: 0, // system
+            };
+        }
+
+        // ========================================
+        // === 结束：世界书内容注入逻辑 ===
+        // ========================================
+
+
 
         // Build complete request body using DEFAULT_USER's settings
         const injectedMessages = injectExtensionPrompts([...chatHistory, ...messages], extensionPrompts, characterData, defaultSettings.oai_settings?.chat_completion_source);
