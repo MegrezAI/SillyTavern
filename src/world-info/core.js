@@ -20,6 +20,7 @@ import {
 } from './loaders.js';
 import WorldInfoBuffer from './WorldInfoBuffer.js';
 import WorldInfoTimedEffects from './WorldInfoTimedEffects.js';
+import { getChatCompletionModel } from '../chat-util.js';
 
 /**
  * 条目排序函数（按order降序）
@@ -39,6 +40,8 @@ const sortFn = (a, b) => b.order - a.order;
  * @returns {Promise<object[]>} 排序后的条目数组
  */
 async function getSortedEntries(userDirectories, characterData, chatMetadata, userSettings, insertionStrategy) {
+    console.debug('[WI] Getting sorted entries...');
+
     try {
         const selectedWorldInfo = userSettings.world_info?.globalSelect || [];
 
@@ -75,7 +78,6 @@ async function getSortedEntries(userDirectories, characterData, chatMetadata, us
         // 聊天相关和设定相关的条目总是优先
         entries = [...chatLore.sort(sortFn), ...personaLore.sort(sortFn), ...entries];
 
-        // 验证、标准化并计算哈希
         entries = entries
             .filter(validateWorldEntry)
             .map(normalizeWorldEntry)
@@ -90,8 +92,16 @@ async function getSortedEntries(userDirectories, characterData, chatMetadata, us
 
         console.debug(`[WI] Found ${entries.length} world lore entries. Sorted by strategy ${insertionStrategy}`);
 
-        // 需要深度克隆条目以避免修改缓存数据
-        return JSON.parse(JSON.stringify(entries));
+        const loadedEntries = entries.flat();
+        console.debug(`[WI] Total entries loaded: ${loadedEntries.length}`);
+        loadedEntries.forEach(entry => {
+            console.debug(`[WI] Loaded entry ${entry.uid}: constant=${entry.constant}, key=[${entry.key?.join(', ') || 'empty'}], content_length=${entry.content?.length || 0}`);
+        });
+
+        const sorted = loadedEntries.sort(sortFn);
+        console.debug(`[WI] Entries after sorting: ${sorted.length}`);
+
+        return JSON.parse(JSON.stringify(sorted));
     } catch (e) {
         console.error('[WI] Error in getSortedEntries:', e);
         return [];
@@ -107,9 +117,11 @@ async function getSortedEntries(userDirectories, characterData, chatMetadata, us
  * @param {object[]} sortedEntries 排序后的世界书条目
  * @param {object} wiSettings 世界书设置
  * @param {object} chatMetadata 聊天元数据
+ * @param {string} model 模型名称
+ * @param {object} characterData 角色数据
  * @returns {Promise<object>} 激活的世界书数据
  */
-async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData, sortedEntries, wiSettings, chatMetadata, characterData = {}, model = 'gpt-3.5-turbo') {
+async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData, sortedEntries, wiSettings, chatMetadata, characterData = {}, model) {
     // 将世界书设置添加到全局扫描数据中，这样WorldInfoBuffer可以访问它们
     const enhancedGlobalScanData = {
         ...globalScanData,
@@ -188,7 +200,7 @@ async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData, sorted
             let headerLogged = false;
             function log(...args) {
                 if (!headerLogged) {
-                    console.debug(`[WI] Entry ${entry.uid}`, `from '${entry.world}' processing`, entry);
+                    // console.debug(`[WI] Entry ${entry.uid}`, `from '${entry.world}' processing`, entry);
                     headerLogged = true;
                 }
                 console.debug(`[WI] Entry ${entry.uid}`, ...args);
@@ -258,6 +270,7 @@ async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData, sorted
 
             // 常量条目
             if (entry.constant) {
+                console.debug(`[WI] Entry ${entry.uid} activated as constant. Key: [${entry.key?.join(', ') || 'empty'}], Content length: ${entry.content?.length || 0}`);
                 log('activated because of constant');
                 activatedNow.add(entry);
                 continue;
@@ -392,8 +405,8 @@ async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData, sorted
         console.debug('[WI] --- PROBABILITY CHECKS ---');
         !newEntries.length && console.debug('[WI] No probability checks to do');
 
-        // 获取allActivatedText的token数（前端逻辑）
-        const allActivatedTextTokens = await getTokenCount(allActivatedText, model || 'gpt-3.5-turbo');
+        // 获取allActivatedText的token数
+        const allActivatedTextTokens = await getTokenCount(allActivatedText, model);
 
         // 概率检查和预算管理
         for (const entry of newEntries) {
@@ -431,7 +444,7 @@ async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData, sorted
             newContent += `${entry.content}\n`;
 
             // 精确的Token预算检查（与前端对齐）
-            const newContentTokens = await getTokenCount(newContent, model || 'gpt-3.5-turbo');
+            const newContentTokens = await getTokenCount(newContent, model);
             const totalTokens = allActivatedTextTokens + newContentTokens;
 
             if (totalTokens >= budget) {
@@ -460,7 +473,7 @@ async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData, sorted
         } else if (!successfulNewEntries.length) {
             console.debug('[WI] Probability checks failed for all activated entries. No new entries activated.');
         } else {
-            console.debug(`[WI] Successfully activated ${successfulNewEntries.length} new entries to prompt. ${allActivatedEntries.size} total entries activated.`, successfulNewEntries);
+            console.debug(`[WI] Successfully activated ${successfulNewEntries.length} new entries to prompt. ${allActivatedEntries.size} total entries activated.`);
         }
 
         // 决定下一个扫描状态（与前端对齐）
@@ -666,10 +679,13 @@ function buildWorldInfoResult(allActivatedEntries, budget) {
  * @param {object} characterData 角色数据
  * @param {object} chatMetadata 聊天元数据
  * @param {object} userSettings 用户设置
- * @param {string} model 模型名称（用于精确token计数）
+ * @param {string} chat_completion_source 聊天完成源
  * @returns {Promise<object>} 世界书提示词结果
  */
-async function getWorldInfoPrompt(chat, maxContext, isDryRun, globalScanData, userDirectories, characterData, chatMetadata, userSettings, model) {
+async function getWorldInfoPrompt(chat, maxContext, isDryRun, globalScanData, userDirectories, characterData, chatMetadata, userSettings, chat_completion_source) {
+
+    const model = getChatCompletionModel(chat_completion_source || userSettings.oai_settings.chat_completion_source, userSettings.oai_settings);
+    console.debug('[WI] Using model:', model);
     try {
         // 合并世界书设置
         const wiSettings = {
@@ -695,6 +711,7 @@ async function getWorldInfoPrompt(chat, maxContext, isDryRun, globalScanData, us
             sortedEntries,
             wiSettings,
             chatMetadata,
+            characterData,
             model,
         );
 

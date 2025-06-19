@@ -1812,7 +1812,6 @@ router.post('/generate-simple', async function (request, response) {
             }).filter(Boolean);
 
             // 调用世界书处理 - 传递实际的模型信息用于精确token计数
-            const requestModel = request.body.model || 'gpt-3.5-turbo';
             worldInfoResult = await getWorldInfoPrompt(
                 chatMessages,
                 maxContext,
@@ -1822,7 +1821,7 @@ router.post('/generate-simple', async function (request, response) {
                 characterData,
                 chatMetadata,
                 defaultSettings,
-                requestModel, // 传递实际的模型名称
+                chat_completion_source,
             );
 
             console.info(`[SIMPLE] World Info processed: ${worldInfoResult.allActivatedEntries.size} entries activated`);

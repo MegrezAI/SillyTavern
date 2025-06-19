@@ -725,6 +725,9 @@ async function getTokenCount(input, model = '') {
         const queryModel = String(model || '');
         const tokenizerModel = getTokenizerModel(queryModel);
 
+        console.log('[WI Debug] 输入模型:', queryModel);
+        console.log('[WI Debug] 选择的tokenizer模型:', tokenizerModel);
+
         // Claude tokenizer
         if (tokenizerModel === 'claude') {
             const claudeTokenizer = getWebTokenizer('claude');
