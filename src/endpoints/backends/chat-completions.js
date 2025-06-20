@@ -2507,7 +2507,7 @@ router.post('/generate-simple', async function (request, response) {
 
     async function saveChatData(simpleRequestData, chatData, userProfile) {
         try {
-            const directoryName = simpleRequestData.characterData.name;
+            const directoryName = simpleRequestData.characterData.avatar.replace('.png', '');
             const filePath = path.join(simpleRequestData.userDirectories.chats, directoryName, `${simpleRequestData.file_name}.jsonl`);
 
             // Ensure directory exists
