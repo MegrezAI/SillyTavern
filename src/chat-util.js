@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import sanitize from 'sanitize-filename';
 import { readCharacterData } from './endpoints/characters.js';
+import { tryParse } from './util.js';
 
 /**
  * Build a complete request body like the frontend would send
@@ -143,7 +144,7 @@ export function buildFullRequestBody({ characterData, messages, stream, chat_com
         use_makersuite_sysprompt: oaiSettings.use_makersuite_sysprompt !== false, // Add Google AI system prompt setting
         custom_prompt_post_processing: oaiSettings.custom_prompt_post_processing || '',
         file_name: file_name,
-        avatar: characterData.avatar,
+        avatar_url: characterData.avatar,
         extension_prompts: requestExtensionPrompts, // Add extension prompts to the request
     };
 }
@@ -347,44 +348,31 @@ export function loadUserSettings(userDirectories) {
 /**
  * Load character data from character file
  * @param {object} userDirectories User directories
- * @param {string} charName Character name
+ * @param {string} avatarUrl Character avatar
  * @returns {Promise<object|null>} Character data or null if not found
  */
-export async function loadCharacterData(userDirectories, charName) {
+export async function loadCharacterData(userDirectories, avatarUrl) {
     try {
-        // Find character file by name
-        const files = fs.readdirSync(userDirectories.characters);
-        const pngFiles = files.filter(file => file.endsWith('.png'));
-
-        for (const file of pngFiles) {
-            const filePath = path.join(userDirectories.characters, file);
-            try {
-                // Use the exported readCharacterData function
-                const imgData = await readCharacterData(filePath);
-                if (imgData) {
-                    const jsonData = JSON.parse(imgData);
-                    const characterName = jsonData.data?.name || jsonData.name;
-                    if (characterName === charName) {
-                        return {
-                            avatar: file.replace('.png', ''),
-                            name: characterName,
-                            description: jsonData.data?.description || jsonData.description || '',
-                            personality: jsonData.data?.personality || jsonData.personality || '',
-                            scenario: jsonData.data?.scenario || jsonData.scenario || '',
-                            first_mes: jsonData.data?.first_mes || jsonData.first_mes || '',
-                            mes_example: jsonData.data?.mes_example || jsonData.mes_example || '',
-                            system_prompt: jsonData.data?.system_prompt || '',
-                            data: jsonData.data || jsonData,
-                        };
-                    }
-                }
-            } catch (error) {
-                // Skip files that can't be parsed
-                console.warn(`Could not parse character file ${file}:`, error.message);
-                continue;
-            }
+        const filePath = path.join(userDirectories.characters, avatarUrl);
+        const imgData = await readCharacterData(filePath);
+        if (!imgData) {
+            return null;
         }
-        return null;
+
+        const jsonData = tryParse(imgData);
+        const characterName = jsonData.data?.name || jsonData.name;
+
+        return {
+            avatar: avatarUrl,
+            name: characterName,
+            description: jsonData.data?.description || jsonData.description || '',
+            personality: jsonData.data?.personality || jsonData.personality || '',
+            scenario: jsonData.data?.scenario || jsonData.scenario || '',
+            first_mes: jsonData.data?.first_mes || jsonData.first_mes || '',
+            mes_example: jsonData.data?.mes_example || jsonData.mes_example || '',
+            system_prompt: jsonData.data?.system_prompt || '',
+            data: jsonData.data || jsonData,
+        };
     } catch (error) {
         console.error('Error loading character data:', error);
         return null;

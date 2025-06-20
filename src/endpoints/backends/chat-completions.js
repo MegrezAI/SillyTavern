@@ -165,7 +165,7 @@ async function addMemoryToMessages(request, messages) {
 
     let kbId = '';
     try {
-        const characterDir = request.body.avatar;
+        const characterDir = request.body.avatar_url.replace('.png', '');
         const fileName = `${String(request.body.file_name)}.jsonl`;
         const filePath = path.join(
             request.user.directories.chats,
@@ -1647,36 +1647,36 @@ router.post('/generate-simple', async function (request, response) {
     if (!request.body) return response.status(400).send({ error: true });
 
     // Check if this is a simplified request (char_name, file_name, messages, stream)
-    const { char_name, file_name, messages, stream = false, chat_completion_source } = request.body;
-    if (!char_name || !file_name || !Array.isArray(messages)) {
+    const { char_name, avatar_url, file_name, messages, stream = false, chat_completion_source } = request.body;
+    if (!char_name || !avatar_url || !file_name || !Array.isArray(messages)) {
         return response.status(400).send({ error: 'Invalid request body' });
     }
 
     let simpleRequestData = null; // Store for later use in saving
 
     let defaultSettings = null;
+    const characterDir = avatar_url.replace('.png', '');
     try {
         // Get DEFAULT_USER's configuration
         const handle = DEFAULT_USER.handle;
         const defaultDirectories = getUserDirectories(handle);
         defaultSettings = loadUserSettings(defaultDirectories);
 
-        // Load character data from default user's directories
-        const characterData = await loadCharacterData(defaultDirectories, char_name);
+        // Load character data using avatar_url instead of char_name
+        const characterData = await loadCharacterData(defaultDirectories, avatar_url);
         if (!characterData) {
             return response.status(404).send({ error: 'Character not found' });
         }
 
         // Load chat history from current user's directories
-        const chatHistory = await loadChatHistory(request.user.directories, characterData.avatar, file_name);
+        const chatHistory = await loadChatHistory(request.user.directories, avatar_url, file_name);
 
         // Try to get existing chat metadata from the first line of the chat file
         let existingChatMetadata = null;
         try {
-            const directoryName = characterData.avatar;
             const chatFilePath = path.join(
                 request.user.directories.chats,
-                directoryName,
+                characterDir,
                 sanitize(`${file_name}.jsonl`),
             );
             if (fs.existsSync(chatFilePath)) {
@@ -1697,6 +1697,7 @@ router.post('/generate-simple', async function (request, response) {
             char_name,
             file_name,
             characterData,
+            avatar_url,
             userMessage: messages[0], // Only take the first message because there will only ever be one
             chatHistory,
             userDirectories: request.user.directories,
@@ -2509,11 +2510,10 @@ router.post('/generate-simple', async function (request, response) {
 
     async function saveChatData(simpleRequestData, chatData, userProfile) {
         try {
-            const directoryName = simpleRequestData.characterData.avatar;
-            const filePath = path.join(simpleRequestData.userDirectories.chats, directoryName, `${simpleRequestData.file_name}.jsonl`);
+            const filePath = path.join(simpleRequestData.userDirectories.chats, characterDir, `${simpleRequestData.file_name}.jsonl`);
 
             // Ensure directory exists
-            const dirPath = path.join(simpleRequestData.userDirectories.chats, directoryName);
+            const dirPath = path.join(simpleRequestData.userDirectories.chats, characterDir);
             if (!fs.existsSync(dirPath)) {
                 fs.mkdirSync(dirPath, { recursive: true });
             }
