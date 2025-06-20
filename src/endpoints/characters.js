@@ -1319,7 +1319,12 @@ router.get('/list', async function (request, response) {
 router.post('/get', validateAvatarUrlMiddleware, async function (request, response) {
     try {
         if (!request.body) return response.sendStatus(400);
-        const item = request.body.avatar_url;
+        let item = request.body.avatar_url;
+
+        if (!item.endsWith('.png')) {
+            item = `${item}.png`;
+        }
+
         const handle = DEFAULT_USER.handle;
         const directories = getUserDirectories(handle);
         const filePath = path.join(directories.characters, item);
