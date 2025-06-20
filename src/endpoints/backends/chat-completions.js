@@ -1861,80 +1861,156 @@ router.post('/generate-simple', async function (request, response) {
         // === 开始：世界书内容注入逻辑 ===
         // ========================================
 
-        // 处理世界书前置内容（现在是字符串）
-        // 示例：worldInfoBefore = "这是世界背景\n这是角色设定\n这是场景描述"
+        const isGoogleAI = chat_completion_source === 'makersuite' || chat_completion_source === 'vertexai';
+
+        // 处理世界书前置内容
         if (worldInfoResult && worldInfoResult.worldInfoBefore) {
-            extensionPrompts['WORLD_INFO_BEFORE'] = {
-                value: worldInfoResult.worldInfoBefore,
-                position: 0, // BEFORE_PROMPT
-                depth: 0,
-                role: 0, // system
-            };
-        }
-
-        // 处理世界书后置内容（现在是字符串）
-        // 示例：worldInfoAfter = "补充背景信息\n额外的世界规则"
-        if (worldInfoResult && worldInfoResult.worldInfoAfter) {
-            extensionPrompts['WORLD_INFO_AFTER'] = {
-                value: worldInfoResult.worldInfoAfter,
-                position: 1, // IN_CHAT
-                depth: 0,
-                role: 0, // system
-            };
-        }
-
-        // 处理深度插入的世界书条目（现在是按深度分组的数组）
-        // 示例：worldInfoDepth = [
-        //   { depth: 2, entries: ["背景信息1", "背景信息2"], role: 0 },
-        //   { depth: 4, entries: ["细节描述"], role: 0 }
-        // ]
-        // entryContent 将是："背景信息1\n背景信息2" (字符串，而不是数组)
-        if (worldInfoResult && worldInfoResult.worldInfoDepth && worldInfoResult.worldInfoDepth.length > 0) {
-            worldInfoResult.worldInfoDepth.forEach((depthEntry, index) => {
-                const entryContent = depthEntry.entries.join('\n');
-                if (entryContent.trim()) {
-                    extensionPrompts[`WORLD_INFO_DEPTH_${index}`] = {
-                        value: entryContent,
-                        position: 1, // IN_CHAT
-                        depth: depthEntry.depth,
+            if (isGoogleAI) {
+                // Google AI: 为每个条目创建独立的system消息
+                const entries = worldInfoResult.worldInfoBefore.split('\n').filter(entry => entry.trim());
+                entries.forEach((entry, index) => {
+                    extensionPrompts[`WORLD_INFO_BEFORE_${index}`] = {
+                        value: entry.trim(),
+                        position: 0, // BEFORE_PROMPT
+                        depth: 0,
                         role: 0, // system
                     };
+                });
+            } else {
+                // 其他API: 保持原有的合并方式
+                extensionPrompts['WORLD_INFO_BEFORE'] = {
+                    value: worldInfoResult.worldInfoBefore,
+                    position: 0, // BEFORE_PROMPT
+                    depth: 0,
+                    role: 0, // system
+                };
+            }
+        }
+
+        // 处理世界书后置内容
+        if (worldInfoResult && worldInfoResult.worldInfoAfter) {
+            if (isGoogleAI) {
+                // Google AI: 为每个条目创建独立的system消息
+                const entries = worldInfoResult.worldInfoAfter.split('\n').filter(entry => entry.trim());
+                entries.forEach((entry, index) => {
+                    extensionPrompts[`WORLD_INFO_AFTER_${index}`] = {
+                        value: entry.trim(),
+                        position: 1, // IN_CHAT
+                        depth: 0,
+                        role: 0, // system
+                    };
+                });
+            } else {
+                // 其他API: 保持原有的合并方式
+                extensionPrompts['WORLD_INFO_AFTER'] = {
+                    value: worldInfoResult.worldInfoAfter,
+                    position: 1, // IN_CHAT
+                    depth: 0,
+                    role: 0, // system
+                };
+            }
+        }
+
+        // 处理深度插入的世界书条目
+        if (worldInfoResult && worldInfoResult.worldInfoDepth && worldInfoResult.worldInfoDepth.length > 0) {
+            worldInfoResult.worldInfoDepth.forEach((depthEntry, groupIndex) => {
+                if (isGoogleAI) {
+                    // Google AI: 每个条目都是独立的system消息
+                    depthEntry.entries.forEach((entry, entryIndex) => {
+                        if (entry.trim()) {
+                            extensionPrompts[`WORLD_INFO_DEPTH_${groupIndex}_${entryIndex}`] = {
+                                value: entry.trim(),
+                                position: 1, // IN_CHAT
+                                depth: depthEntry.depth,
+                                role: 0, // system
+                            };
+                        }
+                    });
+                } else {
+                    // 其他API: 合并同一深度的条目
+                    const entryContent = depthEntry.entries.join('\n');
+                    if (entryContent.trim()) {
+                        extensionPrompts[`WORLD_INFO_DEPTH_${groupIndex}`] = {
+                            value: entryContent,
+                            position: 1, // IN_CHAT
+                            depth: depthEntry.depth,
+                            role: 0, // system
+                        };
+                    }
                 }
             });
         }
 
-        // 处理 Author's Note 前置内容（现在是字符串）
-        // 示例：anBefore = "重要规则1\n重要规则2\n重要规则3" (而不是 ["重要规则1", "重要规则2", "重要规则3"])
+        // 处理 Author's Note 前置内容
         if (worldInfoResult && worldInfoResult.anBefore && worldInfoResult.anBefore.trim()) {
-            extensionPrompts['WORLD_INFO_AN_BEFORE'] = {
-                value: worldInfoResult.anBefore,
-                position: 1, // IN_CHAT
-                depth: 0,
-                role: 0, // system
-            };
+            if (isGoogleAI) {
+                // Google AI: 为每个条目创建独立的system消息
+                const entries = worldInfoResult.anBefore.split('\n').filter(entry => entry.trim());
+                entries.forEach((entry, index) => {
+                    extensionPrompts[`WORLD_INFO_AN_BEFORE_${index}`] = {
+                        value: entry.trim(),
+                        position: 1, // IN_CHAT
+                        depth: 0,
+                        role: 0, // system
+                    };
+                });
+            } else {
+                // 其他API: 保持原有的合并方式
+                extensionPrompts['WORLD_INFO_AN_BEFORE'] = {
+                    value: worldInfoResult.anBefore,
+                    position: 1, // IN_CHAT
+                    depth: 0,
+                    role: 0, // system
+                };
+            }
         }
 
-        // 处理 Author's Note 后置内容（现在是字符串）
-        // 示例：anAfter = "补充说明1\n补充说明2" (而不是 ["补充说明1", "补充说明2"])
+        // 处理 Author's Note 后置内容
         if (worldInfoResult && worldInfoResult.anAfter && worldInfoResult.anAfter.trim()) {
-            extensionPrompts['WORLD_INFO_AN_AFTER'] = {
-                value: worldInfoResult.anAfter,
-                position: 1, // IN_CHAT
-                depth: 0,
-                role: 0, // system
-            };
+            if (isGoogleAI) {
+                // Google AI: 为每个条目创建独立的system消息
+                const entries = worldInfoResult.anAfter.split('\n').filter(entry => entry.trim());
+                entries.forEach((entry, index) => {
+                    extensionPrompts[`WORLD_INFO_AN_AFTER_${index}`] = {
+                        value: entry.trim(),
+                        position: 1, // IN_CHAT
+                        depth: 0,
+                        role: 0, // system
+                    };
+                });
+            } else {
+                // 其他API: 保持原有的合并方式
+                extensionPrompts['WORLD_INFO_AN_AFTER'] = {
+                    value: worldInfoResult.anAfter,
+                    position: 1, // IN_CHAT
+                    depth: 0,
+                    role: 0, // system
+                };
+            }
         }
 
-        // 处理示例内容（现在是字符串）
-        // 示例：worldInfoExamples = "用户: 你好\n助手: 您好！\n用户: 天气如何\n助手: 今天天气不错"
-        // (而不是 ["用户: 你好\n助手: 您好！", "用户: 天气如何\n助手: 今天天气不错"])
+        // 处理示例内容
         if (worldInfoResult && worldInfoResult.worldInfoExamples && worldInfoResult.worldInfoExamples.trim()) {
-            extensionPrompts['WORLD_INFO_EXAMPLES'] = {
-                value: worldInfoResult.worldInfoExamples,
-                position: 1, // IN_CHAT
-                depth: 0,
-                role: 0, // system
-            };
+            if (isGoogleAI) {
+                // Google AI: 为每个示例创建独立的system消息
+                const examples = worldInfoResult.worldInfoExamples.split('\n\n').filter(example => example.trim());
+                examples.forEach((example, index) => {
+                    extensionPrompts[`WORLD_INFO_EXAMPLES_${index}`] = {
+                        value: example.trim(),
+                        position: 1, // IN_CHAT
+                        depth: 0,
+                        role: 0, // system
+                    };
+                });
+            } else {
+                // 其他API: 保持原有的合并方式
+                extensionPrompts['WORLD_INFO_EXAMPLES'] = {
+                    value: worldInfoResult.worldInfoExamples,
+                    position: 1, // IN_CHAT
+                    depth: 0,
+                    role: 0, // system
+                };
+            }
         }
 
         // ========================================
@@ -2501,6 +2577,8 @@ router.post('/generate-simple', async function (request, response) {
         messages.reverse();
 
         let totalInsertedMessages = 0;
+        const isGoogleAI = chatCompletionSource === 'makersuite' || chatCompletionSource === 'vertexai';
+
         const maxDepth = Object.keys(extensionPrompts).length > 0
             ? Math.max(...Object.values(extensionPrompts).map(p => p.depth || 0))
             : 0;
@@ -2559,17 +2637,28 @@ router.post('/generate-simple', async function (request, response) {
 
             // Insert messages at the appropriate depth
             if (roleMessages.length > 0) {
-                const injectIdx = i + totalInsertedMessages;
-                console.log(`Inserting ${roleMessages.length} messages at depth ${i}, index ${injectIdx}, total messages: ${messages.length}`);
+                if (isGoogleAI) {
+                    // 对于Google AI，把所有system消息都放在开头
+                    const systemMessages = roleMessages.filter(msg => msg.role === 'system');
+                    const nonSystemMessages = roleMessages.filter(msg => msg.role !== 'system');
 
-                if (injectIdx <= messages.length) {
+                    if (systemMessages.length > 0) {
+                        messages.push(...systemMessages);
+                        totalInsertedMessages += systemMessages.length;
+                        console.log(`[Depth ${i}] 🚀 Inserted ${systemMessages.length} SYSTEM messages at the beginning`);
+                    }
+
+                    if (nonSystemMessages.length > 0) {
+                        const injectIdx = i + totalInsertedMessages;
+                        messages.splice(injectIdx, 0, ...nonSystemMessages);
+                        totalInsertedMessages += nonSystemMessages.length;
+                        console.log(`[Depth ${i}] 🚀 Inserted ${nonSystemMessages.length} non-SYSTEM messages at index ${injectIdx}`);
+                    }
+                } else {
+                    const injectIdx = i + totalInsertedMessages;
                     messages.splice(injectIdx, 0, ...roleMessages);
                     totalInsertedMessages += roleMessages.length;
-                    console.log(`Successfully inserted. New total messages: ${messages.length}`);
-                } else {
-                    console.log(`Cannot insert at index ${injectIdx}, messages array only has ${messages.length} items. Appending to end.`);
-                    messages.push(...roleMessages);
-                    totalInsertedMessages += roleMessages.length;
+                    console.log(`[Depth ${i}] 🚀 Inserted ${roleMessages.length} messages at index ${injectIdx}`);
                 }
             }
         }
