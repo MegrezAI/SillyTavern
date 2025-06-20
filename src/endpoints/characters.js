@@ -378,6 +378,7 @@ const toShallow = (character) => {
         chat_size: character.chat_size,
         data_size: character.data_size,
         tags: character.tags,
+        creator_notes: _.get(character, 'data.creator_notes', ''),
         data: {
             name: _.get(character, 'data.name', ''),
             character_version: _.get(character, 'data.character_version', ''),
@@ -1258,8 +1259,7 @@ router.get('/list', async function (request, response) {
             data = data.filter(char => {
                 const searchableFields = [
                     char.name,
-                    char.data?.name,
-                    char.data?.description,
+                    char.creator_notes,
                 ].filter(Boolean).map(field => field.toLowerCase());
 
                 return searchableFields.some(field => field.includes(searchTerm));
@@ -1320,13 +1320,15 @@ router.post('/get', validateAvatarUrlMiddleware, async function (request, respon
     try {
         if (!request.body) return response.sendStatus(400);
         const item = request.body.avatar_url;
-        const filePath = path.join(request.user.directories.characters, item);
+        const handle = DEFAULT_USER.handle;
+        const directories = getUserDirectories(handle);
+        const filePath = path.join(directories.characters, item);
 
         if (!fs.existsSync(filePath)) {
             return response.sendStatus(404);
         }
 
-        const data = await processCharacter(item, request.user.directories, { shallow: false });
+        const data = await processCharacter(item, directories, { shallow: false });
 
         return response.send(data);
     } catch (err) {
