@@ -18,6 +18,9 @@ import {
     removeOldBackups,
     formatBytes,
 } from '../util.js';
+import { readCharacterData } from './characters.js';
+import { DEFAULT_USER } from '../constants.js';
+import { getUserDirectories } from '../users.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
@@ -1018,14 +1021,21 @@ router.get('/list', async function (request, response) {
             );
 
             // Always find the latest files
+            const handle = DEFAULT_USER.handle;
+            const directories = getUserDirectories(handle);
+            const characterFile = path.join(directories.characters, `${characterDir}.png`);
+
+            const jsonData = await readCharacterData(characterFile);
+            const characterData = tryParse(jsonData);
             const latest = fileStats.reduce((a, b) => a.stats.ctime > b.stats.ctime ? a : b);
-            const chatInfo = await getChatInfo(path.join(characterPath, latest.file), { character: characterDir });
+            const chatInfo = await getChatInfo(path.join(characterPath, latest.file));
             if (!chatInfo?.file_name) return null;
 
             return {
                 file_name: chatInfo.file_name,
                 last_mes: latest.stats.mtime.getTime(),
-                character: characterDir,
+                character: characterData.name || characterData.data.name,
+                avatar: `${characterDir}.png`,
             };
         }));
 
