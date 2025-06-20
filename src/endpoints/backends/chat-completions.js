@@ -165,7 +165,7 @@ async function addMemoryToMessages(request, messages) {
 
     let kbId = '';
     try {
-        const characterDir = request.body.char_name;
+        const characterDir = request.body.avatar;
         const fileName = `${String(request.body.file_name)}.jsonl`;
         const filePath = path.join(
             request.user.directories.chats,
@@ -1673,9 +1673,10 @@ router.post('/generate-simple', async function (request, response) {
         // Try to get existing chat metadata from the first line of the chat file
         let existingChatMetadata = null;
         try {
+            const directoryName = characterData.avatar;
             const chatFilePath = path.join(
                 request.user.directories.chats,
-                characterData.name,
+                directoryName,
                 sanitize(`${file_name}.jsonl`),
             );
             if (fs.existsSync(chatFilePath)) {
@@ -2029,6 +2030,7 @@ router.post('/generate-simple', async function (request, response) {
             userSettings: defaultSettings,
             extensionPrompts,
             chat_completion_source,
+            file_name,
         });
 
         // Replace request body with the full request
@@ -2507,7 +2509,7 @@ router.post('/generate-simple', async function (request, response) {
 
     async function saveChatData(simpleRequestData, chatData, userProfile) {
         try {
-            const directoryName = simpleRequestData.characterData.avatar.replace('.png', '');
+            const directoryName = simpleRequestData.characterData.avatar;
             const filePath = path.join(simpleRequestData.userDirectories.chats, directoryName, `${simpleRequestData.file_name}.jsonl`);
 
             // Ensure directory exists

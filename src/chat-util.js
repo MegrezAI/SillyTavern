@@ -12,9 +12,10 @@ import { readCharacterData } from './endpoints/characters.js';
  * @param {object} params.userSettings Complete user settings
  * @param {object} params.extensionPrompts Extension prompts object
  * @param {string} params.chat_completion_source Chat completion source
+ * @param {string} params.file_name File name
  * @returns {object} Complete request body
  */
-export function buildFullRequestBody({ characterData, messages, stream, chat_completion_source, userSettings, extensionPrompts = {} }) {
+export function buildFullRequestBody({ characterData, messages, stream, chat_completion_source, userSettings, extensionPrompts = {}, file_name }) {
     // Convert ST messages to OpenAI format
     const openaiMessages = [];
 
@@ -141,7 +142,8 @@ export function buildFullRequestBody({ characterData, messages, stream, chat_com
         request_images: oaiSettings.request_images || false,
         use_makersuite_sysprompt: oaiSettings.use_makersuite_sysprompt !== false, // Add Google AI system prompt setting
         custom_prompt_post_processing: oaiSettings.custom_prompt_post_processing || '',
-        file_name: '', // Will be set by caller if needed
+        file_name: file_name,
+        avatar: characterData.avatar,
         extension_prompts: requestExtensionPrompts, // Add extension prompts to the request
     };
 }
@@ -364,7 +366,7 @@ export async function loadCharacterData(userDirectories, charName) {
                     const characterName = jsonData.data?.name || jsonData.name;
                     if (characterName === charName) {
                         return {
-                            avatar: file,
+                            avatar: file.replace('.png', ''),
                             name: characterName,
                             description: jsonData.data?.description || jsonData.description || '',
                             personality: jsonData.data?.personality || jsonData.personality || '',
