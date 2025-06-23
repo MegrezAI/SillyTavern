@@ -1661,7 +1661,7 @@ router.post('/generate-simple', async function (request, response) {
         const handle = DEFAULT_USER.handle;
         const defaultDirectories = getUserDirectories(handle);
         defaultSettings = loadUserSettings(defaultDirectories);
-
+        const userSettings = loadUserSettings(request.user.directories);
         // Load character data using avatar_url instead of char_name
         const characterData = await loadCharacterData(defaultDirectories, avatar_url);
         if (!characterData) {
@@ -2028,7 +2028,8 @@ router.post('/generate-simple', async function (request, response) {
             characterData,
             messages: injectedMessages,
             stream,
-            userSettings: defaultSettings,
+            userSettings,
+            defaultSettings,
             extensionPrompts,
             chat_completion_source,
             file_name,

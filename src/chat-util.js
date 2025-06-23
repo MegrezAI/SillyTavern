@@ -14,9 +14,10 @@ import { tryParse } from './util.js';
  * @param {object} params.extensionPrompts Extension prompts object
  * @param {string} params.chat_completion_source Chat completion source
  * @param {string} params.file_name File name
+ * @param {object} params.defaultSettings Default user settings
  * @returns {object} Complete request body
  */
-export function buildFullRequestBody({ characterData, messages, stream, chat_completion_source, userSettings, extensionPrompts = {}, file_name }) {
+export function buildFullRequestBody({ characterData, messages, stream, chat_completion_source, userSettings, extensionPrompts = {}, file_name, defaultSettings }) {
     // Convert ST messages to OpenAI format
     const openaiMessages = [];
 
@@ -49,11 +50,11 @@ export function buildFullRequestBody({ characterData, messages, stream, chat_com
     }
 
     // Simple requests use OpenAI-compatible APIs configured in oai_settings
-    const oaiSettings = userSettings.oai_settings || {};
+    const oaiSettings = defaultSettings.oai_settings || {};
 
     // Check if oai_settings has a configured chat_completion_source
     if (!oaiSettings.chat_completion_source) {
-        throw new Error(`No chat_completion_source configured in oai_settings. Current main_api is "${userSettings.main_api}", but simple requests require an OpenAI-compatible API to be configured in oai_settings.`);
+        throw new Error(`No chat_completion_source configured in oai_settings. Current main_api is "${defaultSettings.main_api}", but simple requests require an OpenAI-compatible API to be configured in oai_settings.`);
     }
 
     const chatCompletionSource = chat_completion_source || oaiSettings.chat_completion_source;
@@ -89,6 +90,15 @@ export function buildFullRequestBody({ characterData, messages, stream, chat_com
             systemMessages.push({
                 role: 'system',
                 content: `Personality: ${substituteMacros(characterData.personality, userSettings.username || 'User', characterData.name, characterData, userSettings)}`,
+            });
+        }
+
+        // User persona description
+        const personaDescription = userSettings.power_user?.persona_description || '';
+        if (personaDescription && personaDescription.trim()) {
+            systemMessages.push({
+                role: 'system',
+                content: `${substituteMacros(personaDescription, userSettings.username || 'User', characterData.name, characterData, userSettings)}`,
             });
         }
 
@@ -162,7 +172,7 @@ export function substituteMacros(content, userName, charName, characterData = {}
     if (!content) return '';
 
     // Get persona description from user settings if available
-    const personaDescription = userSettings.persona_description || '';
+    const personaDescription = userSettings.power_user?.persona_description || '';
 
     // Define macro replacements similar to frontend
     const macros = {
