@@ -1033,7 +1033,7 @@ router.get('/list', async function (request, response) {
                 if (!chatInfo?.file_name) return null;
 
                 return {
-                    file_name: path.parse(chatInfo.file_name).name,
+                    file_name: chatInfo.file_name,
                     last_mes: latest.stats.mtime.getTime(),
                     character: characterData?.name || characterData?.data?.name || characterDir,
                     avatar: `${characterDir}.png`,
