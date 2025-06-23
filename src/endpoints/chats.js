@@ -1025,18 +1025,23 @@ router.get('/list', async function (request, response) {
             const directories = getUserDirectories(handle);
             const characterFile = path.join(directories.characters, `${characterDir}.png`);
 
-            const jsonData = await readCharacterData(characterFile);
-            const characterData = tryParse(jsonData);
-            const latest = fileStats.reduce((a, b) => a.stats.ctime > b.stats.ctime ? a : b);
-            const chatInfo = await getChatInfo(path.join(characterPath, latest.file));
-            if (!chatInfo?.file_name) return null;
+            try {
+                const jsonData = await readCharacterData(characterFile);
+                const characterData = tryParse(jsonData);
+                const latest = fileStats.reduce((a, b) => a.stats.ctime > b.stats.ctime ? a : b);
+                const chatInfo = await getChatInfo(path.join(characterPath, latest.file));
+                if (!chatInfo?.file_name) return null;
 
-            return {
-                file_name: path.parse(chatInfo.file_name).name,
-                last_mes: latest.stats.mtime.getTime(),
-                character: characterData.name || characterData.data.name,
-                avatar: `${characterDir}.png`,
-            };
+                return {
+                    file_name: path.parse(chatInfo.file_name).name,
+                    last_mes: latest.stats.mtime.getTime(),
+                    character: characterData?.name || characterData?.data?.name || characterDir,
+                    avatar: `${characterDir}.png`,
+                };
+            } catch (err) {
+                console.warn(`Skipping chat for character ${characterDir}: ${err.message}`);
+                return null;
+            }
         }));
 
         const finalResult = allChats.filter(Boolean).sort((a, b) => (b?.last_mes ?? 0) - (a?.last_mes ?? 0));
