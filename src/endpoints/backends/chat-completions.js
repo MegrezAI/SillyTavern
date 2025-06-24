@@ -46,7 +46,6 @@ import {
     calculateGoogleBudgetTokens,
     postProcessPrompt,
     PROMPT_PROCESSING_TYPE,
-    addAssistantPrefix,
 } from '../../prompt-converters.js';
 
 import { readSecret, SECRET_KEYS } from '../secrets.js';
@@ -2260,10 +2259,10 @@ router.post('/generate-simple', async function (request, response) {
         case CHAT_COMPLETION_SOURCES.MISTRALAI: return sendMistralAIRequest(request, response);
         case CHAT_COMPLETION_SOURCES.COHERE: return sendCohereRequest(request, response);
         case CHAT_COMPLETION_SOURCES.DEEPSEEK: return sendDeepSeekRequest(request, response);
+        case CHAT_COMPLETION_SOURCES.AIMLAPI: return sendAimlapiRequest(request, response);
         case CHAT_COMPLETION_SOURCES.XAI: return sendXaiRequest(request, response);
     }
 
-    // Continue with the rest of the original /generate logic for other sources...
     let apiUrl;
     let apiKey;
     let headers;
@@ -2326,10 +2325,11 @@ router.post('/generate-simple', async function (request, response) {
             bodyParams['reasoning'] = { effort: request.body.reasoning_effort };
         }
 
-        let cachingAtDepth = getConfigValue('claude.cachingAtDepth', -1, 'number');
+        const cachingAtDepth = getConfigValue('claude.cachingAtDepth', -1, 'number');
         const isClaude3or4 = /anthropic\/claude-(3|opus-4|sonnet-4)/.test(request.body.model);
+        const cacheTTL = getConfigValue('claude.extendedTTL', false, 'boolean') ? '1h' : '5m';
         if (Number.isInteger(cachingAtDepth) && cachingAtDepth >= 0 && isClaude3or4) {
-            cachingAtDepthForOpenRouterClaude(request.body.messages, cachingAtDepth);
+            cachingAtDepthForOpenRouterClaude(request.body.messages, cachingAtDepth, cacheTTL);
         }
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {
         apiUrl = request.body.custom_url;
@@ -2353,7 +2353,7 @@ router.post('/generate-simple', async function (request, response) {
         apiKey = readSecret(request.user.directories, SECRET_KEYS.PERPLEXITY);
         headers = {};
         bodyParams = {};
-        request.body.messages = postProcessPrompt(request.body.messages, 'strict', getPromptNames(request));
+        request.body.messages = postProcessPrompt(request.body.messages, PROMPT_PROCESSING_TYPE.STRICT, getPromptNames(request));
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.GROQ) {
         apiUrl = API_GROQ;
         apiKey = readSecret(request.user.directories, SECRET_KEYS.GROQ);
@@ -2393,23 +2393,8 @@ router.post('/generate-simple', async function (request, response) {
         }
     }
 
-    // Check for API key only for sources that require it and aren't handled by special functions
-    const sourcesWithSpecialHandlers = [
-        CHAT_COMPLETION_SOURCES.CLAUDE,
-        CHAT_COMPLETION_SOURCES.SCALE,
-        CHAT_COMPLETION_SOURCES.AI21,
-        CHAT_COMPLETION_SOURCES.MAKERSUITE,
-        CHAT_COMPLETION_SOURCES.VERTEXAI,
-        CHAT_COMPLETION_SOURCES.MISTRALAI,
-        CHAT_COMPLETION_SOURCES.COHERE,
-        CHAT_COMPLETION_SOURCES.DEEPSEEK,
-        CHAT_COMPLETION_SOURCES.XAI,
-        CHAT_COMPLETION_SOURCES.CUSTOM,
-        CHAT_COMPLETION_SOURCES.POLLINATIONS,
-    ];
-
-    if (!apiKey && !request.body.reverse_proxy && !sourcesWithSpecialHandlers.includes(request.body.chat_completion_source)) {
-        console.warn('API key is missing for completion source:', request.body.chat_completion_source);
+    if (!apiKey && !request.body.reverse_proxy && request.body.chat_completion_source !== CHAT_COMPLETION_SOURCES.CUSTOM) {
+        console.warn('OpenAI API key is missing.');
         return response.status(400).send({ error: true });
     }
 
