@@ -16,6 +16,10 @@ sed -i 's/@[^:]*:5432/@postgres:5432/g' config/config.yaml
 UPDATED_DB_URL=$(grep "databaseUrl" config/config.yaml)
 echo "Updated database configuration: $UPDATED_DB_URL"
 
+# Add hosts entry for Google Generative Language API
+echo "Adding hosts entry for generativelanguage.googleapis.com..."
+echo "18.179.61.165 generativelanguage.googleapis.com" >> /etc/hosts
+
 # Extract database host from config.yaml
 DB_HOST=$(grep "databaseUrl" config/config.yaml | sed -n 's/.*@\([^:]*\):.*/\1/p')
 DB_PORT=5432
