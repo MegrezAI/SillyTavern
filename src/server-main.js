@@ -56,6 +56,7 @@ import multerMonkeyPatch from './middleware/multerMonkeyPatch.js';
 import initRequestProxy from './request-proxy.js';
 import getCacheBusterMiddleware from './middleware/cacheBuster.js';
 import corsProxyMiddleware from './middleware/corsProxy.js';
+import { migrateFlatSecrets } from './endpoints/secrets.js';
 import {
     getVersion,
     color,
