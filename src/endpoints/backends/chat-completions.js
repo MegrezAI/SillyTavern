@@ -63,6 +63,7 @@ import path from 'node:path';
 import { readFirstLine } from '../chats.js';
 import { getUserDirectories } from '../../users.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
+import { getProjectIdFromServiceAccount, getVertexAIAuth } from '../google.js';
 
 const API_OPENAI = 'https://api.openai.com/v1';
 const API_CLAUDE = 'https://api.anthropic.com/v1';
