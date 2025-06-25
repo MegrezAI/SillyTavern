@@ -4,6 +4,10 @@ import sanitize from 'sanitize-filename';
 import { readCharacterData } from './endpoints/characters.js';
 import { tryParse } from './util.js';
 
+// Main system prompt template used across functions
+const MAIN_PROMPT_TEMPLATE = (characterName, username, lang) =>
+    `Write ${characterName}'s next reply in a fictional chat between ${characterName} and ${username}. Respond in ${lang === 'zh' ? 'Chinese' : 'English'}.`;
+
 /**
  * Build a complete request body like the frontend would send
  * @param {object} params Parameters
@@ -15,9 +19,10 @@ import { tryParse } from './util.js';
  * @param {string} params.chat_completion_source Chat completion source
  * @param {string} params.file_name File name
  * @param {object} params.defaultSettings Default user settings
+ * @param {string} params.lang Model output language
  * @returns {object} Complete request body
  */
-export function buildFullRequestBody({ characterData, messages, stream, chat_completion_source, userSettings, extensionPrompts = {}, file_name, defaultSettings }) {
+export function buildFullRequestBody({ characterData, messages, stream, chat_completion_source, userSettings, extensionPrompts = {}, file_name, defaultSettings, lang = 'en' }) {
     // Convert ST messages to OpenAI format
     const openaiMessages = [];
 
@@ -69,8 +74,7 @@ export function buildFullRequestBody({ characterData, messages, stream, chat_com
         const systemMessages = [];
 
         // Main system prompt
-        const mainPrompt = oaiSettings.prompts?.find(p => p.identifier === 'main')?.content ||
-            `Write ${characterData.name}'s next reply in a fictional chat between ${characterData.name} and ${userSettings.username}.`;
+        const mainPrompt = MAIN_PROMPT_TEMPLATE(characterData.name, userSettings.username, lang);
 
         systemMessages.push({
             role: 'system',
@@ -112,7 +116,7 @@ export function buildFullRequestBody({ characterData, messages, stream, chat_com
         openaiMessages.unshift(...systemMessages);
     } else {
         // For non-Google AI, use the merged system prompt
-        const systemPrompt = buildSystemPrompt(characterData, userSettings);
+        const systemPrompt = buildSystemPrompt(characterData, userSettings, lang);
         if (systemPrompt) {
             openaiMessages.unshift({
                 role: 'system',
@@ -237,10 +241,10 @@ export function substituteMacros(content, userName, charName, characterData = {}
  * Build system prompt from character data and user settings
  * @param {object} characterData Character data
  * @param {object} userSettings User settings
+ * @param {string} lang Model output language
  * @returns {string} System prompt
  */
-export function buildSystemPrompt(characterData, userSettings) {
-    const oaiSettings = userSettings.oai_settings || {};
+export function buildSystemPrompt(characterData, userSettings, lang) {
 
     // Check if character has its own system prompt
     const charSystemPrompt = characterData.data?.system_prompt;
@@ -256,8 +260,7 @@ export function buildSystemPrompt(characterData, userSettings) {
     }
 
     // Fall back to main prompt from settings
-    const mainPrompt = oaiSettings.prompts?.find(p => p.identifier === 'main')?.content ||
-        `Write ${characterData.name}'s next reply in a fictional chat between ${characterData.name} and ${userSettings.username}.`;
+    const mainPrompt = MAIN_PROMPT_TEMPLATE(characterData.name, userSettings.username, lang);
 
     // Use the macro substitution function
     let systemContent = substituteMacros(
