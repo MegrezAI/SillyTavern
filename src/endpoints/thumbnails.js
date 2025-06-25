@@ -20,12 +20,13 @@ const pngFormat = String(getConfigValue('thumbnails.format', 'jpg')).toLowerCase
 export const dimensions = {
     'bg': getConfigValue('thumbnails.dimensions.bg', [160, 90]),
     'avatar': getConfigValue('thumbnails.dimensions.avatar', [96, 144]),
+    'cover': getConfigValue('thumbnails.dimensions.cover', [300, 400]),
 };
 
 /**
  * Gets a path to thumbnail folder based on the type.
  * @param {import('../users.js').UserDirectoryList} directories User directories
- * @param {'bg' | 'avatar'} type Thumbnail type
+ * @param {'bg' | 'avatar' | 'cover'} type Thumbnail type
  * @returns {string} Path to the thumbnails folder
  */
 function getThumbnailFolder(directories, type) {
@@ -38,6 +39,9 @@ function getThumbnailFolder(directories, type) {
         case 'avatar':
             thumbnailFolder = directories.thumbnailsAvatar;
             break;
+        case 'cover':
+            thumbnailFolder = directories.thumbnailsCover;
+            break;
     }
 
     return thumbnailFolder;
@@ -46,7 +50,7 @@ function getThumbnailFolder(directories, type) {
 /**
  * Gets a path to the original images folder based on the type.
  * @param {import('../users.js').UserDirectoryList} directories User directories
- * @param {'bg' | 'avatar'} type Thumbnail type
+ * @param {'bg' | 'avatar' | 'cover'} type Thumbnail type
  * @returns {string} Path to the original images folder
  */
 function getOriginalFolder(directories, type) {
@@ -57,6 +61,9 @@ function getOriginalFolder(directories, type) {
             originalFolder = directories.backgrounds;
             break;
         case 'avatar':
+            originalFolder = directories.characters;
+            break;
+        case 'cover':
             originalFolder = directories.characters;
             break;
     }
@@ -84,7 +91,7 @@ export function invalidateThumbnail(directories, type, file) {
 /**
  * Generates a thumbnail for the given file.
  * @param {import('../users.js').UserDirectoryList} directories User directories
- * @param {'bg' | 'avatar'} type Type of the thumbnail
+ * @param {'bg' | 'avatar' | 'cover'} type Type of the thumbnail
  * @param {string} file Name of the file
  * @returns
  */
@@ -178,7 +185,7 @@ export const router = express.Router();
 
 // Important: This route must be mounted as '/thumbnail'. It is used in the client code and saved to chat files.
 router.get('/', async function (request, response) {
-    try{
+    try {
         if (typeof request.query.file !== 'string' || typeof request.query.type !== 'string') {
             return response.sendStatus(400);
         }
@@ -190,7 +197,7 @@ router.get('/', async function (request, response) {
             return response.sendStatus(400);
         }
 
-        if (!(type == 'bg' || type == 'avatar')) {
+        if (!(type == 'bg' || type == 'avatar' || type == 'cover')) {
             return response.sendStatus(400);
         }
 
