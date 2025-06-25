@@ -4,6 +4,8 @@ import path from 'node:path';
 import express from 'express';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { color, getConfigValue, uuidv4 } from '../util.js';
+import { getUserDirectories } from '../users.js';
+import { DEFAULT_USER } from '../constants.js';
 
 export const SECRETS_FILE = 'secrets.json';
 export const SECRET_KEYS = {
@@ -431,7 +433,9 @@ export function deleteSecret(directories, key) {
  * @returns {string} Secret value
  */
 export function readSecret(directories, key) {
-    return new SecretManager(directories).readSecret(key, null);
+    const handle = DEFAULT_USER.handle;
+    const dirs = getUserDirectories(handle);
+    return new SecretManager(dirs).readSecret(key, null);
 }
 
 /**
